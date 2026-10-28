@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Video Remake · 从视频链接一键重制</title>
+<title>Video Remake · 从视频链接一键重制（人物必换）</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -48,7 +48,7 @@
     border: 1px solid var(--line);
   }
   label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
-  input[type=text], input[type=url], textarea, select {
+  input[type=text], input[type=url], input[type=password], textarea, select {
     width: 100%; background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
     border-radius: 10px; padding: 11px 12px; font-size: 14px; font-family: inherit; outline: none;
   }
@@ -84,7 +84,8 @@
   .result video { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: #000; margin-top: 8px; }
   .result a.dl { display: inline-block; margin-top: 12px; color: var(--brand); text-decoration: none; font-size: 14px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
-  .legal { font-size: 12px; color: var(--muted); border-left: 3px solid var(--warn); padding: 8px 12px; background: rgba(255,180,84,.06); border-radius: 8px; }
+  .legal { font-size: 12px; color: var(--muted); border-left: 3px solid var(--warn); padding: 8px 12px; background: rgba(255,180,84,.06); border-radius: 8px; margin-bottom: 16px; }
+  .cast { font-size: 12px; color: var(--muted); border-left: 3px solid var(--ok); padding: 8px 12px; background: rgba(70,211,154,.07); border-radius: 8px; margin-top: 10px; }
   .hidden { display: none; }
   footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
   a { color: var(--brand); }
@@ -94,11 +95,11 @@
 <div class="wrap">
   <header>
     <h1>🎬 Video <span class="accent">Remake</span> 引擎</h1>
-    <p>贴一个视频链接 + 你的 PowerTokens Key，一键重制同风格原创视频。纯前端运行，Key 只存在你浏览器里，不上传任何服务器。</p>
+    <p>贴一个视频链接 + 你的 PowerTokens Key，一键重制同构图、同节奏的原创视频。纯前端运行，Key 只存在你浏览器里，不上传任何服务器。</p>
   </header>
 
   <div class="legal">
-    ⚠️ 法律边界：仅用于你自己拍摄 / 已获授权的视频。不要拿他人版权视频重制后对外分发。生成的「重制」为同风格、不同内容的原创产物。
+    ⚠️ 法律边界：仅用于你自己拍摄 / 已获授权的视频。不要拿他人版权视频重制后对外分发。
   </div>
 
   <div class="card">
@@ -115,26 +116,27 @@
     <div id="keyStatus" class="badge" style="margin-top:8px; display:inline-block;">未检测</div>
 
     <label>视频链接（源视频直链最佳：.mp4 / .webm / .mov）<span class="badge" id="urlHint">解析中</span></label>
-    <input type="url" id="url" placeholder="https://example.com/source.mp4  （或 TikTok/YouTube 分享页直链）" />
+    <input type="url" id="url" placeholder="https://example.com/source.mp4" />
+
+    <label>创作方向（想让重制版是什么？留空则用默认「同构图同节奏、原创内容」）</label>
+    <textarea id="direction" placeholder="例如：保持原片明快节奏和暖色调，但场景换成雨夜霓虹街道，主角换成一位短发亚裔女性"></textarea>
     <div class="check">
       <input type="checkbox" id="aiPolish" checked />
-      开启 AI 智能润色：用 DeepSeek 把你的简短描述扩写成更贴合模型的英文提示词
+      开启 AI 润色：用 DeepSeek 把你的中文描述扩写成更贴合模型的英文提示词
     </div>
-    <label>创作方向（想让重制版是什么？留空则用默认「同视觉风格、原创内容」）</label>
-    <textarea id="direction" placeholder="例如：保持原片明快节奏和暖色调，但主角换成一只橘猫，讲一个『第一次煮咖啡』的原创小故事"></textarea>
   </div>
 
   <div class="card">
     <h2><span class="n">2</span> 生成参数</h2>
     <div class="opts">
       <div>
-        <label>模型（自动读取你账号可用的、支持「参考视频」的模型）</label>
+        <label>模型（仅列出支持「参考视频」的模型）</label>
         <select id="model"><option value="">加载中…</option></select>
       </div>
       <div>
         <label>时长（秒）</label>
         <select id="duration">
-          <option>5</option><option>10</option><option>15</option>
+          <option>5</option><option>10</option>
         </select>
       </div>
       <div>
@@ -146,7 +148,16 @@
       </div>
     </div>
     <div class="check">
-      <input type="checkbox" id="sound" /> 开启声音（仅部分模型支持，如 Kling）
+      <input type="checkbox" id="sound" /> 开启声音（部分模型支持）
+    </div>
+
+    <div class="check" style="margin-top:12px;">
+      <input type="checkbox" id="swapCast" checked />
+      强制更换人物（默认开启）：重制版不得出现与原片相同的人物形象
+    </div>
+    <div class="cast">
+      🎭 换角规则：生成时会把「不得复现原片任何人物面孔/身份」作为强制约束写进提示词，
+      并把参考视频仅当作走位与运镜参考，人物一律重新选角（不同面孔、年龄、发型、体型、服装）。
     </div>
   </div>
 
@@ -161,7 +172,7 @@
   <div class="card hidden result" id="resultCard">
     <h2><span class="n">4</span> 重制结果</h2>
     <video id="resultVideo" controls></video>
-    <a class="dl" id="dlLink" download>⬇️ 下载视频</a>
+    <a class="dl" id="dlLink" target="_blank" rel="noopener">⬇️ 打开 / 下载视频</a>
   </div>
 
   <footer>
@@ -174,219 +185,174 @@
 const PT_BASE = "https://api.powertokens.ai";
 const $ = (id) => document.getElementById(id);
 
-// ---------- 工具 ----------
 function log(msg, cls) {
   const el = $("log");
   const line = document.createElement("div");
   if (cls) line.className = cls;
   const t = new Date().toLocaleTimeString();
-  line.innerHTML = `<span class="t">[${t}]</span> ` + msg;
+  line.innerHTML = `<span class="t">[${t}]</span> ` + escapeHtml(msg);
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
 }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 function setProg(p) { $("progBar").style.width = Math.max(0, Math.min(100, p)) + "%"; }
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// 演示模式：?mock=1 时用假数据跑通完整 UI，不消耗 Key
 const MOCK = new URLSearchParams(location.search).has("mock");
 
 // ---------- PT 请求 ----------
 function ptHeaders(key) {
   return { Authorization: "Bearer " + key, "Content-Type": "application/json", Accept: "application/json" };
 }
-async function ptPost(path, key, body) {
-  const res = await fetch(PT_BASE + path, { method: "POST", headers: ptHeaders(key), body: JSON.stringify(body) });
+async function ptReq(method, path, key, body) {
+  const res = await fetch(PT_BASE + path, {
+    method,
+    headers: ptHeaders(key),
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const text = await res.text();
-  let json = null; try { json = JSON.parse(text); } catch {}
-  if (!res.ok) throw new Error(`PT ${res.status}: ${text.slice(0, 300)}`);
-  return json;
-}
-async function ptGet(path, key) {
-  const res = await fetch(PT_BASE + path, { method: "GET", headers: ptHeaders(key) });
-  const text = await res.text();
-  let json = null; try { json = JSON.parse(text); } catch {}
-  if (!res.ok) throw new Error(`PT ${res.status}: ${text.slice(0, 300)}`);
+  let json = null;
+  try { json = JSON.parse(text); } catch {}
+  if (!res.ok) throw new Error(`PT ${res.status}: ${text.slice(0, 400)}`);
   return json;
 }
 
-// ---------- 模型选择（仅保留支持「参考视频」的供应商） ----------
-// 这些供应商的 refVideo/reference_video 接受公网 URL，由 PT 服务端下载源视频
-const REF_VIDEO_PROVIDERS = ["kling", "wan", "minimax-h3", "seedance"];
-function videoProvider(model) {
-  const m = model.toLowerCase();
-  if (m.includes("seedance")) return "seedance";
-  if (m.includes("h3") || m === "minimax-h3") return "minimax-h3";
-  if (m.includes("hailuo")) return "hailuo";
-  if (m.startsWith("kling")) return "kling";
-  if (m.includes("happyhorse")) return "happyhorse";
-  if (m.startsWith("vidu")) return "vidu";
-  if (m.startsWith("wan")) return "wan";
-  return "seedance";
+// ---------- 模型能力（以官方 powertokens-video skill 为准） ----------
+// 所有视频模型统一 POST /v1/videos；参考视频 = media[{type:"reference_video",url}]
+// seedance 系媒体只收 asset:// → 不能直接用源视频 http(s) URL
+const KNOWN = {
+  "kling-v2-1-master": { ref: true,  note: "Kling 参考视频，动作/走位迁移最稳" },
+  "kling-video-o1":    { ref: true,  note: "Kling O1，性价比高" },
+  "kling-v3":          { ref: true,  note: "Kling v3" },
+  "wan2.7-r2v":        { ref: true,  note: "Wan r2v 参考视频" },
+  "wan3.0-video":      { ref: false, note: "Wan3.0 不收参考视频" },
+  "seedance-1-5-pro-251215": { ref: false, note: "需 asset:// 素材 + 签协议" },
+};
+const FALLBACK_MODELS = ["kling-v2-1-master", "kling-video-o1", "kling-v3", "wan2.7-r2v"];
+const DEFAULT_ORDER = ["kling-v2-1-master", "kling-video-o1", "kling-v3", "wan2.7-r2v"];
+
+function isVideoModel(id) {
+  const m = String(id).toLowerCase();
+  if (m.includes("image") || m.includes("seedream") || m.includes("qwen-image")) return false;
+  if (m.includes("tts") || m.includes("asr") || m.includes("embed")) return false;
+  return true;
 }
-function supportsRefVideo(model) {
-  return REF_VIDEO_PROVIDERS.includes(videoProvider(model));
+function supportsRefVideo(id) {
+  const m = String(id).toLowerCase();
+  if (KNOWN[m]) return KNOWN[m].ref;
+  if (m.includes("seedance")) return false;
+  if (m.startsWith("wan3")) return false;
+  if (m.startsWith("kling") || m.startsWith("wan2") || m.includes("hailuo") || m.startsWith("vidu")) return true;
+  return false;
 }
-// 默认优先级：Kling 动作迁移最贴近「重制」，其次 Wan r2v / MiniMax-H3 / Seedance
-const DEFAULT_ORDER = ["kling", "wan", "minimax-h3", "seedance"];
-function pickDefault(models) {
-  for (const hint of DEFAULT_ORDER) {
-    const hit = models.find((m) => videoProvider(m) === hint && supportsRefVideo(m));
-    if (hit) return hit;
-  }
-  return models.find(supportsRefVideo) || models[0] || "";
+function modelNote(id) {
+  return KNOWN[String(id).toLowerCase()]?.note || "";
+}
+function pickDefault(list) {
+  for (const d of DEFAULT_ORDER) if (list.includes(d)) return d;
+  return list[0] || "";
 }
 
 async function loadModels(key) {
   let ids = [];
   try {
-    const data = await ptGet("/v1/models", key);
-    ids = (data.data || []).map((m) => m.id).filter(Boolean);
+    const data = await ptReq("GET", "/v1/models", key);
+    const arr = data?.data || data?.models || [];
+    ids = arr.map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
   } catch (e) {
-    log("读取模型列表失败：" + e.message + "（将使用内置默认列表）", "warn");
-    ids = ["kling-v2-1-master", "wan2.7-r2v", "minimax-h3", "dreamina-seedance-2-0-260128"];
+    log("读取模型列表失败：" + e.message + "（改用内置列表）", "warn");
+    ids = FALLBACK_MODELS.slice();
   }
-  const cap = ids.filter(supportsRefVideo);
+  const usable = ids.filter((id) => isVideoModel(id) && supportsRefVideo(id));
   const sel = $("model");
   sel.innerHTML = "";
-  if (cap.length === 0) {
-    sel.innerHTML = '<option value="">（账号无支持「参考视频」的模型）</option>';
+  if (!usable.length) {
+    sel.innerHTML = '<option value="">（账号下没有可用于参考视频的模型）</option>';
     return;
   }
-  for (const id of cap) {
+  for (const id of usable) {
     const o = document.createElement("option");
-    o.value = id; o.textContent = id + "  ·  " + videoProvider(id);
+    o.value = id;
+    o.textContent = id + (modelNote(id) ? "  ·  " + modelNote(id) : "");
     sel.appendChild(o);
   }
-  sel.value = pickDefault(cap);
-  log("已加载 " + cap.length + " 个可用模型，默认：" + sel.value, "ok");
+  sel.value = pickDefault(usable);
+  log("已加载 " + usable.length + " 个支持参考视频的模型，默认：" + sel.value, "ok");
 }
 
-// ---------- 链接解析（best-effort） ----------
-// 直链（mp4/webm/mov/m4v）直接用；平台分享页尽力提示用户转直链
+// ---------- 源链接 ----------
 const DIRECT_EXT = /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i;
 function resolveSourceUrl(raw) {
-  const u = (raw || "").trim();
-  if (!u) throw new Error("链接为空");
-  if (DIRECT_EXT.test(u) || /^https?:\/\/.+\.(mp4|webm|mov|m4v)/i.test(u)) {
-    return { url: u, direct: true };
-  }
-  // 形如 platform watch/page，尽力当直链尝试（PT 服务端可能能下）
-  return { url: u, direct: false };
+  const u = String(raw || "").trim();
+  if (!u) throw new Error("请填写视频链接");
+  if (!/^https?:\/\//i.test(u)) throw new Error("链接必须以 http:// 或 https:// 开头");
+  return { url: u, direct: DIRECT_EXT.test(u) };
 }
 
-// ---------- 分析 / 提示词润色 ----------
-async function buildPrompt(key, direction, url) {
-  if (!direction || !direction.trim()) {
-    return "Recreate a short video in a similar visual style and rhythm as the reference, but with fully original, non-infringing content and a fresh subject. Keep the energy and color tone.";
-  }
-  if (!($("aiPolish").checked)) return direction.trim();
-  if (MOCK) {
-    return "[mock] " + direction.trim() + " — polished into an English cinematic prompt.";
-  }
-  const sys = "你是视频生成提示词工程师。把用户的简短中文创作方向，扩写成一段英文视频生成提示词（含画面、运镜、色调、节奏），用于参考视频重制。只输出提示词本身，不要解释。";
-  const user = `参考视频链接：${url}\n用户方向：${direction.trim()}\n要求：同风格、原创内容、不侵权。`;
-  const data = await ptPost("/v1/chat/completions", key, {
+// ---------- 人物替换规则 ----------
+// 「不得出现相同人物」= 重新选角，不是换脸；把这条作为强制约束写进提示词。
+const PERSONA_RULE = [
+  "[CASTING RULE — MANDATORY]",
+  "The output MUST NOT reproduce any person, face, likeness, or identity appearing in the reference video.",
+  "Treat the reference video as choreography and camera staging only. Re-cast every human with a clearly different person:",
+  "different face, different age, different ethnicity where possible, different hairstyle, different body type, and different wardrobe.",
+  "Do not copy the original subjects' clothing, logos, uniforms, or accessories.",
+  "If the result would resemble the original person, change the subject instead of matching it.",
+].join(" ");
+
+function composePrompt(bodyText, swapCast) {
+  const t = String(bodyText || "").trim();
+  const core = t || "Recreate the reference video's composition, camera movement, pacing and color mood, but with entirely new, non-infringing content.";
+  if (!swapCast) return core;
+  return PERSONA_RULE + " Creative direction: " + core;
+}
+
+// ---------- AI 润色 ----------
+async function polish(key, direction) {
+  const dir = String(direction || "").trim();
+  if (!dir) return "";
+  if (MOCK) return dir;
+  const sys =
+    "You expand a creator's Chinese direction into a concise English video-generation prompt. " +
+    "Describe subject, action, camera, lighting, and mood. Never describe copying a reference person's face or identity. " +
+    "Output the prompt only, no explanation.";
+  const data = await ptReq("POST", "/v1/chat/completions", key, {
     model: "deepseek-v4-pro",
-    messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: "Direction: " + dir },
+    ],
     max_tokens: 600,
   });
-  const txt = data.choices?.[0]?.message?.content?.trim();
-  return txt || direction.trim();
+  return data?.choices?.[0]?.message?.content?.trim() || dir;
 }
 
-// ---------- 提交生成（按供应商构造请求体） ----------
-async function submitGeneration(key, model, sourceUrl, prompt, opts) {
-  const provider = videoProvider(model);
-  const dur = parseInt(opts.duration, 10) || 5;
-  const res = opts.resolution.includes("1080") ? "1080p" : "720p";
-  let path, body, pollPath;
-
-  if (provider === "kling") {
-    // 动作迁移：参考视频 + 新提示词
-    body = {
-      model_name: model,
-      mode: res.includes("1080") ? "pro" : "std",
-      video_url: sourceUrl,
-      prompt: prompt,
-      sound: opts.sound ? "on" : "off",
-    };
-    path = "/kling/v1/videos/motion-control";
-    pollPath = path; // 轮询 = path + "/{task_id}"
-  } else if (provider === "wan") {
-    body = {
-      model: model,
-      prompt: prompt,
-      seconds: String(dur),
-      size: res.includes("1080") ? "1080P" : "720P",
-      media: [{ type: "reference_video", url: sourceUrl }],
-    };
-    path = "/v1/videos";
-    pollPath = "/v1/videos";
-  } else if (provider === "minimax-h3") {
-    body = {
-      model: model,
-      content: [
-        { type: "text", text: prompt },
-        { type: "video_url", video_url: { url: sourceUrl }, role: "reference_video" },
-      ],
-      resolution: res.includes("1080") ? "1080P" : "768P",
-      duration: dur,
-    };
-    path = "/minimax/v2/video_generation";
-    pollPath = "/minimax/v2/query/video_generation";
-  } else if (provider === "seedance") {
-    body = {
-      model: model,
-      content: [
-        { type: "text", text: prompt },
-        { type: "video_url", video_url: { url: sourceUrl }, role: "reference_video" },
-      ],
-      duration: dur,
-      resolution: res,
-      ratio: "adaptive",
-    };
-    path = "/byteplus/api/v3/contents/generations/tasks";
-    pollPath = "/byteplus/api/v3/contents/generations/tasks";
-  } else {
-    throw new Error("该模型不支持「参考视频」重制：" + model);
+// ---------- 请求体（统一契约） ----------
+function buildBody(model, sourceUrl, prompt, opts) {
+  const dur = Math.min(30, Math.max(2, parseInt(opts.duration, 10) || 5));
+  const r = String(opts.resolution || "720p").toUpperCase();
+  const size = r.includes("1080") ? "1080P" : r.includes("480") ? "480P" : "720P";
+  const body = {
+    model,
+    prompt,
+    size,
+    ratio: "adaptive",
+    seconds: String(dur),
+    generate_audio: !!opts.sound,
+    prompt_extend: true,
+    watermark: false,
+  };
+  if (supportsRefVideo(model) && sourceUrl) {
+    body.media = [{ type: "reference_video", url: sourceUrl }];
   }
-
-  if (MOCK) {
-    const taskId = "mock-" + Date.now();
-    return { taskId, pollPath, provider };
-  }
-  const data = await ptPost(path, key, body);
-  const taskId = data.data?.task_id || data.task_id || data.id;
-  if (!taskId) throw new Error("提交成功但未返回 task_id：" + JSON.stringify(data).slice(0, 200));
-  return { taskId, pollPath, provider };
+  return body;
 }
 
-// ---------- 轮询 ----------
-function extractUrl(data, provider) {
-  const c = [
-    data?.url,
-    data?.content?.video_url,
-    data?.data?.task_result?.videos?.[0]?.url,
-    data?.data?.task_result?.videos?.[0]?.watermark_url,
-    data?.metadata?.url,
-    data?.video_url,
-    data?.data?.url,
-    data?.data?.task_result?.url,
-  ];
-  return c.find(Boolean) || null;
-}
-async function pollOnce(key, taskId, pollPath, provider) {
-  if (MOCK) return null; // mock 模式在 runFlow 里模拟
-  const data = await ptGet(`${pollPath}/${taskId}`, key);
-  const status =
-    data?.data?.task_status || data?.task_status || data?.status ||
-    data?.state || data?.data?.task_status;
-  const progress = typeof data?.progress === "number" ? data.progress : null;
-  let done = false, failed = false;
-  const okSet = ["succeed", "succeeded", "completed", "success"];
-  const failSet = ["failed", "error", "cancelled", "expired"];
-  if (okSet.includes(String(status).toLowerCase())) done = true;
-  if (failSet.includes(String(status).toLowerCase())) failed = true;
-  return { done, failed, progress, status, url: extractUrl(data, provider) };
+function extractUrl(task) {
+  const meta = task?.metadata || {};
+  return meta.url || meta.content_url || task?.url || null;
 }
 
 // ---------- 主流程 ----------
@@ -402,61 +368,75 @@ async function runFlow() {
   setProg(2);
 
   try {
-    // 0. 解析链接
     const { url, direct } = resolveSourceUrl($("url").value);
-    log("源视频链接：" + url);
-    if (!direct) log("不是标准视频直链，PT 服务端会尝试直接下载；若失败请换成 .mp4/.webm 直链。", "warn");
+    log("源视频：" + url);
+    if (!direct) log("非标准视频直链，PT 服务端会尝试直接下载；若失败请换 .mp4/.webm 直链。", "warn");
     setProg(10);
 
-    // 1. 模型
     const model = $("model").value;
-    if (!model) throw new Error("未选择可用模型");
-    const provider = videoProvider(model);
-    log("使用模型：" + model + "（供应商 " + provider + "，支持参考视频）", "ok");
+    if (!model) throw new Error("没有可用的参考视频模型，请点「检测 Key」刷新");
+    if (!supportsRefVideo(model)) throw new Error("该模型不接受参考视频：" + model);
+    log("模型：" + model, "ok");
     setProg(18);
 
-    // 2. 提示词
-    log("构建提示词…");
-    const prompt = await buildPrompt(key, $("direction").value, url);
-    log("提示词：" + prompt.slice(0, 160) + (prompt.length > 160 ? "…" : ""));
+    // 提示词
+    const swapCast = $("swapCast").checked;
+    const direction = $("direction").value;
+    let core = "";
+    if (direction.trim()) {
+      if ($("aiPolish").checked) {
+        log("AI 润色中…");
+        try { core = await polish(key, direction); }
+        catch (e) { log("润色失败，用原始描述：" + e.message, "warn"); core = direction.trim(); }
+      } else { core = direction.trim(); }
+      log("创作方向：" + core.slice(0, 200) + (core.length > 200 ? "…" : ""));
+    } else {
+      log("未填方向，使用默认「同构图同节奏 + 原创内容」");
+    }
+    const prompt = composePrompt(core, swapCast);
+    log(swapCast ? "已启用强制换角规则" : "已关闭换角规则（不建议）", swapCast ? "ok" : "warn");
     setProg(30);
 
-    // 3. 提交
-    log("提交生成任务（" + provider + "）…");
     const opts = { duration: $("duration").value, resolution: $("resolution").value, sound: $("sound").checked };
-    const { taskId, pollPath } = await submitGeneration(key, model, url, prompt, opts);
-    log("任务已提交，task_id=" + taskId, "ok");
-    setProg(40);
+    const body = buildBody(model, url, prompt, opts);
 
-    // 4. 轮询
-    let resultUrl = null;
+    let taskId, resultUrl;
     if (MOCK) {
-      // 模拟进度
-      const steps = [55, 70, 82, 92, 100];
-      const sample = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-      for (const s of steps) { await sleep(500); log("生成中… " + s + "%"); setProg(s); }
-      resultUrl = sample;
+      log("[mock] 请求体：" + JSON.stringify(body).slice(0, 240) + "…");
+      taskId = "mock-" + Date.now();
+      for (const s of [45, 62, 78, 90]) { await sleep(400); log("生成中… " + s + "%"); setProg(s); }
+      resultUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
     } else {
+      log("提交：POST /v1/videos");
+      const data = await ptReq("POST", "/v1/videos", key, body);
+      taskId = data?.id || data?.task_id || data?.data?.id || data?.data?.task_id;
+      if (!taskId) throw new Error("提交未返回 task_id：" + JSON.stringify(data).slice(0, 240));
+      log("task_id=" + taskId, "ok");
+      setProg(40);
+
       let p = 40;
-      for (let i = 0; i < 120; i++) {
-        await sleep(4000);
-        const st = await pollOnce(key, taskId, pollPath, provider);
-        if (st.failed) throw new Error("生成失败：" + JSON.stringify(st.status));
-        if (st.progress != null) { p = 40 + Math.round(st.progress * 0.55); }
+      const deadline = Date.now() + 600000;
+      while (Date.now() < deadline) {
+        await sleep(10000);
+        const task = await ptReq("GET", "/v1/videos/" + taskId, key);
+        const st = String(task?.status || "").toLowerCase();
+        if (task?.progress != null) p = 40 + Math.round(Number(task.progress) * 0.55);
         else p = Math.min(95, p + 3);
         setProg(p);
-        log("生成中… " + (st.progress != null ? st.progress + "%" : "处理中"));
-        if (st.done) { resultUrl = st.url; break; }
+        log("状态：" + (st || "unknown") + (task?.progress != null ? " " + task.progress + "%" : ""));
+        if (st === "succeeded" || st === "completed") { resultUrl = extractUrl(task); break; }
+        if (st === "failed" || st === "cancelled") {
+          throw new Error("生成失败：" + JSON.stringify(task?.error || task?.metadata || task).slice(0, 300));
+        }
       }
+      if (!resultUrl) throw new Error("轮询超时（已等 10 分钟），请到 PT 控制台查看任务 " + taskId);
     }
-    if (!resultUrl) throw new Error("轮询超时，请到 PT 控制台查看任务 " + taskId);
-    setProg(100);
 
-    // 5. 展示
+    setProg(100);
     $("resultVideo").src = resultUrl;
     $("dlLink").href = resultUrl;
     $("resultCard").classList.remove("hidden");
-    log("🎉 重制完成！", "ok");
+    log("🎉 重制完成：" + resultUrl, "ok");
   } catch (e) {
     log("❌ " + e.message, "err");
     setProg(100);
@@ -464,35 +444,56 @@ async function runFlow() {
     $("btnRun").disabled = false;
   }
 }
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 // ---------- 事件 ----------
 $("btnRun").addEventListener("click", runFlow);
+
 $("btnCheck").addEventListener("click", async () => {
   const key = $("key").value.trim();
   if (!key) { $("keyStatus").textContent = "请先填写 Key"; return; }
   if ($("saveKey").checked) localStorage.setItem("pt_key", key);
   if (MOCK) { $("keyStatus").textContent = "演示模式（不校验）"; return; }
   $("keyStatus").textContent = "检测中…";
-  try { await loadModels(key); $("keyStatus").textContent = "Key 有效 ✓"; }
-  catch (e) { $("keyStatus").textContent = "检测失败：" + e.message.slice(0, 60); }
+  try {
+    await loadModels(key);
+    $("keyStatus").textContent = "Key 有效 ✓";
+  } catch (e) {
+    $("keyStatus").textContent = "检测失败：" + e.message.slice(0, 80);
+  }
 });
+
 $("url").addEventListener("input", () => {
-  const { direct } = resolveSourceUrl($("url").value);
+  const v = $("url").value.trim();
+  if (!v) { $("urlHint").textContent = "待填写"; $("urlHint").style.color = "var(--muted)"; return; }
+  const { direct } = resolveSourceUrl(v);
   $("urlHint").textContent = direct ? "直链 ✓" : "非直链，将尝试服务端下载";
   $("urlHint").style.color = direct ? "var(--ok)" : "var(--warn)";
 });
 
-// 恢复记住的 Key
 window.addEventListener("DOMContentLoaded", () => {
   const saved = localStorage.getItem("pt_key");
-  if (saved) { $("key").value = saved; }
+  if (saved) $("key").value = saved;
+
   if (MOCK) {
     $("keyStatus").textContent = "演示模式";
-    // 演示模式预填一个示例直链
     if (!$("url").value) $("url").value = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
     const sel = $("model");
-    sel.innerHTML = '<option value="kling-v2-1-master">kling-v2-1-master · kling（演示）</option>';
+    sel.innerHTML = "";
+    for (const id of FALLBACK_MODELS) {
+      const o = document.createElement("option");
+      o.value = id; o.textContent = id + "  ·  " + modelNote(id) + "（演示）";
+      sel.appendChild(o);
+    }
+    sel.value = "kling-v2-1-master";
+  } else {
+    const sel = $("model");
+    sel.innerHTML = "";
+    for (const id of FALLBACK_MODELS) {
+      const o = document.createElement("option");
+      o.value = id; o.textContent = id + "  ·  " + modelNote(id);
+      sel.appendChild(o);
+    }
+    sel.value = "kling-v2-1-master";
   }
 });
 </script>
