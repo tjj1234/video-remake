@@ -19,6 +19,11 @@
 .probe_frame.jpg
 .probe_test.txt
 .selftest_out.txt
+.commitmsg.txt
+.check.txt
+.clean.txt
+.repoinfo.txt
+.home.txt
 _*.mjs
 _tail.html
 out/
