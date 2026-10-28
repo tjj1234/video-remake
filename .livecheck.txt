@@ -1,0 +1,4 @@
+=== PT Live Check ===
+Key: sk-pt-in***0000
+GET /v1/models → HTTP 401
+Key 无效或被拒：{"error":{"code":"token_invalid","message":"Invalid token (request id: 20261028065937954516551DwvdTGQN)","type":"api_error"}}

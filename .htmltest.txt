@@ -1,0 +1,19 @@
+PASS  存在内联 script
+PASS  JS 语法可编译
+PASS  统一端点 /v1/videos
+PASS  不再有 /kling/v1/videos/motion-control
+PASS  不再有 /minimax/v2/video_generation
+PASS  不再有 /byteplus/
+PASS  参考视频 media.reference_video
+PASS  CASTING RULE 存在
+PASS  禁止复现人物
+PASS  换角开关元素
+PASS  seedance 排除
+PASS  wan3 排除
+PASS  seconds 转字符串
+PASS  轮询路径 /v1/videos/{id}
+PASS  Key 存 localStorage
+PASS  无外部依赖脚本
+PASS  无后端 fetch 到非 PT 域
+
+通过 17 / 共 17
