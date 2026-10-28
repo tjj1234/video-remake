@@ -54,6 +54,22 @@ check("CASTING RULE", code.includes("CASTING RULE"));
 check("Seedance 黑名单", code.includes("SEEDANCE_RE") && code.includes("isSeedance"));
 check("Seedance 被跳过", code.includes("if (isSeedance(ad.id)) continue"));
 
+// --- 回归：ratio 绝不能是 adaptive（wan2.7-r2v 会 400）---
+check("guessRatio 不返回 adaptive", !/return\s+["']adaptive["']/.test(code));
+check("上传图可推断画幅（guessRatio 被 re-used）", code.includes("guessRatio(meta.width, meta.height)"));
+
+// --- 回归：必须有手动上传参考图的入口 ---
+check("有文件选择 input", /<input[^>]+type="file"[^>]+id="refFile"/.test(html));
+check("有拖拽区 drop", /id="drop"/.test(html));
+check("有预览图 refPreview", /id="refPreview"/.test(html));
+check("有清除按钮 refClear", /id="refClear"/.test(html));
+check("有 fileToDataUrl 压缩函数", code.includes("function fileToDataUrl"));
+check("文件体积上限保护（maxSide）", code.includes("1280"));
+check("参考图优先级：上传 > 自动抽帧", code.indexOf("if (userRef && userRef.dataUrl)") > 0
+  && code.indexOf("if (userRef && userRef.dataUrl)") < code.indexOf("else if (!refImage)"));
+check("缺图时给出可操作提示", code.includes("上传一张原视频的人物/场景截图"));
+check("拖拽有阻止浏览器打开图片", code.includes('window.addEventListener("drop"'));
+
 // --- 安全 ---
 check("无外部脚本依赖", !/<script[^>]+src=/.test(html));
 check("只调 PT 域名", !/fetch\(\s*["'`]https?:\/\/(?!api\.powertokens\.ai)/.test(code));

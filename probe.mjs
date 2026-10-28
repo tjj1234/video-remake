@@ -90,17 +90,19 @@ export function extractFrame(src, outPath, atSec = 0.5) {
 }
 
 // 由源视频尺寸推断最接近的宽高比枚举
+// ⚠️ wan2.7-r2v 官方只接受 16:9 / 9:16 / 1:1 / 4:3 / 3:4，
+//    传 adaptive 会被 400 拒绝（实测：only supports ratio 16:9, 9:16, 1:1, 4:3, or 3:4）。
+//    所以这里永远返回表内最接近的比例，不回退 adaptive。
 export function guessRatio(width, height) {
-  if (!width || !height) return "adaptive";
-  const r = width / height;
   const table = [["16:9", 16 / 9], ["4:3", 4 / 3], ["1:1", 1], ["3:4", 3 / 4], ["9:16", 9 / 16]];
+  if (!width || !height) return "16:9";   // 无信息时取最常见的横屏比例
+  const r = width / height;
   let best = table[0], bestDiff = Infinity;
   for (const t of table) {
     const d = Math.abs(r - t[1]);
     if (d < bestDiff) { bestDiff = d; best = t; }
   }
-  // 偏差过大（竖屏 9:16 附近允许）时回退 adaptive
-  return bestDiff < 0.14 ? best[0] : "adaptive";
+  return best[0];
 }
 
 // 竖屏 / 横屏 / 方形

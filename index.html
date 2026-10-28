@@ -93,6 +93,20 @@
   .fixed-k { flex: 0 0 96px; color: var(--muted); }
   .fixed-v { flex: 1; color: var(--text); }
   .hidden { display: none; }
+  .drop {
+    display: flex; align-items: center; gap: 12px; cursor: pointer;
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 12px;
+    background: var(--panel-2); transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--brand); background: rgba(109,139,255,.08); }
+  .drop img { width: 66px; height: 66px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #0b0d12; }
+  .drop .ph { width: 66px; height: 66px; border-radius: 8px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); }
+  .drop .txt { flex: 1; font-size: 13px; color: var(--muted); }
+  .drop .txt b { color: var(--text); font-weight: 600; display: block; margin-bottom: 2px; }
+  .drop .clear { flex: 0 0 auto; }
+  .hint-sm { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .hint-sm.warn { color: var(--warn); }
+  .hint-sm.ok { color: var(--ok); }
   footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
   a { color: var(--brand); }
 </style>
@@ -130,6 +144,19 @@
       <input type="checkbox" id="aiPolish" checked />
       开启 AI 润色：用 DeepSeek 把你的中文描述扩写成更贴合模型的英文提示词
     </div>
+
+    <label>参考图（MiniMax / Kling 必填 · 不传则自动从源视频抽首帧）</label>
+    <div class="drop" id="drop">
+      <div class="ph" id="refPh">🖼️</div>
+      <img id="refPreview" class="hidden" alt="参考图预览" />
+      <div class="txt">
+        <b id="refTitle">拖入图片，或点击选择</b>
+        <span id="refDesc">浏览器能读源视频时会自动抽帧；跨域受限时需要你手动传一张人物/场景图</span>
+      </div>
+      <button class="ghost clear hidden" id="refClear" type="button">清除</button>
+    </div>
+    <input type="file" id="refFile" accept="image/*" class="hidden" />
+    <div class="hint-sm" id="refHint"></div>
   </div>
 
   <div class="card">
@@ -285,16 +312,51 @@ async function grabFrame(videoEl, atSec = 0.5, maxWidth = 1280) {
   }
 }
 
+// ⚠️ wan2.7-r2v 官方只接受 16:9 / 9:16 / 1:1 / 4:3 / 3:4，
+//    传 adaptive 会被 400 拒绝，因此这里永远返回表内最接近的比例。
+// 用户上传的图片 → 压缩成 data URL（同时给出宽高，用于推断画幅）
+// 超过 maxSide 会等比缩小，避免 base64 过大被服务端拒
+function fileToDataUrl(file, maxSide = 1280, quality = 0.92) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error("没有文件"));
+    if (!/^image\//.test(file.type)) return reject(new Error("不是图片文件：" + (file.type || "未知")));
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("读取文件失败"));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("图片解码失败"));
+      img.onload = () => {
+        try {
+          const w0 = img.naturalWidth, h0 = img.naturalHeight;
+          if (!w0 || !h0) return reject(new Error("图片尺寸无效"));
+          const scale = Math.min(1, maxSide / Math.max(w0, h0));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(w0 * scale));
+          c.height = Math.max(1, Math.round(h0 * scale));
+          const ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          resolve({
+            dataUrl: c.toDataURL("image/jpeg", quality),
+            width: w0, height: h0,
+          });
+        } catch (e) { reject(e); }
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
 function guessRatio(width, height) {
-  if (!width || !height) return "adaptive";
-  const r = width / height;
   const table = [["16:9", 16 / 9], ["4:3", 4 / 3], ["1:1", 1], ["3:4", 3 / 4], ["9:16", 9 / 16]];
+  if (!width || !height) return "16:9";
+  const r = width / height;
   let best = table[0], bestDiff = Infinity;
   for (const t of table) {
     const d = Math.abs(r - t[1]);
     if (d < bestDiff) { bestDiff = d; best = t; }
   }
-  return bestDiff < 0.14 ? best[0] : "adaptive";
+  return best[0];
 }
 function orientation(w, h) {
   if (!w || !h) return "unknown";
@@ -426,6 +488,52 @@ function extractUrl(task) {
 }
 
 // ---------- 主流程：固定模型链 + 自动降级 ----------
+// ---------- 参考图上传 ----------
+// 自动抽帧会被源站 CORS 挡住（canvas 污染），所以必须留一条手动上传的退路：
+// MiniMax 的 image / Kling 的 image_url 都是必填，没有图就只能跑 Wan。
+let userRef = null;   // { dataUrl, width, height, name }
+
+function setRefHint(text, cls) {
+  const el = $("refHint");
+  el.textContent = text || "";
+  el.className = "hint-sm" + (cls ? " " + cls : "");
+}
+
+function applyRefImage(ref, name) {
+  userRef = ref;
+  $("refPreview").src = ref.dataUrl;
+  $("refPreview").classList.remove("hidden");
+  $("refPh").classList.add("hidden");
+  $("refClear").classList.remove("hidden");
+  $("refTitle").textContent = name || "已上传参考图";
+  $("refDesc").textContent = ref.width + "x" + ref.height + " · "
+    + Math.round(ref.dataUrl.length / 1024) + " KB · 将作为 MiniMax / Kling 的起始画面";
+  setRefHint("✅ 已就绪。这张图只在你浏览器里转成 base64 后直接发给 PowerTokens，不经过其他服务器。", "ok");
+}
+
+function clearRefImage() {
+  userRef = null;
+  $("refPreview").src = "";
+  $("refPreview").classList.add("hidden");
+  $("refPh").classList.remove("hidden");
+  $("refClear").classList.add("hidden");
+  $("refTitle").textContent = "拖入图片，或点击选择";
+  $("refDesc").textContent = "浏览器能读源视频时会自动抽帧；跨域受限时需要你手动传一张人物/场景图";
+  $("refFile").value = "";
+  setRefHint("");
+}
+
+async function handleRefFile(file) {
+  if (!file) return;
+  setRefHint("正在读取并压缩图片…");
+  try {
+    const ref = await fileToDataUrl(file, 1280, 0.92);
+    applyRefImage(ref, file.name);
+  } catch (e) {
+    setRefHint("❌ " + e.message, "warn");
+  }
+}
+
 async function runFlow() {
   const key = $("key").value.trim();
   if (!key && !MOCK) { alert("请填写 PowerTokens Key"); return; }
@@ -454,10 +562,24 @@ async function runFlow() {
       log("抽取参考帧…");
       refImage = await grabFrame(probe.el, Math.min(0.5, meta.duration / 2));
       if (refImage) log("参考帧已就绪（" + Math.round(refImage.length / 1024) + " KB base64）", "ok");
-      else log("抽帧失败（跨域限制），需要参考图的模型将被跳过", "warn");
       try { probe.el.removeAttribute("src"); probe.el.load(); } catch {}
     } else {
       log("无法读取元数据（" + (probe.reason || "未知") + "），将使用默认参数，时长尺寸无法匹配", "warn");
+    }
+
+    // 用户手动上传的参考图优先（源站跨域时自动抽帧必定失败，必须靠这张）
+    if (userRef && userRef.dataUrl) {
+      refImage = userRef.dataUrl;
+      log("使用你上传的参考图（" + Math.round(refImage.length / 1024) + " KB base64）", "ok");
+      if (!meta.width && userRef.width) {
+        meta.width = userRef.width;
+        meta.height = userRef.height;
+        meta.shortSide = Math.min(userRef.width, userRef.height);
+        log("画幅按上传图推断：" + meta.width + "x" + meta.height + " → " + guessRatio(meta.width, meta.height), "ok");
+      }
+    } else if (!refImage) {
+      log("参考帧缺失：MiniMax / Kling 无法使用，只有 Wan 1 个模型可尝试。", "warn");
+      log("建议：在「参考图」区域上传一张原视频的人物/场景截图，即可启用全部 3 个模型。", "warn");
     }
     setProg(15);
 
@@ -592,6 +714,25 @@ $("btnCheck").addEventListener("click", async () => {
     $("keyStatus").textContent = "检测失败：" + e.message.slice(0, 80);
   }
 });
+
+// ---------- 参考图上传事件 ----------
+$("drop").addEventListener("click", (e) => {
+  if (e.target.id === "refClear") return;
+  $("refFile").click();
+});
+$("refFile").addEventListener("change", (e) => handleRefFile(e.target.files && e.target.files[0]));
+$("refClear").addEventListener("click", (e) => { e.stopPropagation(); clearRefImage(); });
+["dragenter", "dragover"].forEach((ev) =>
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) =>
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", (e) => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleRefFile(f);
+});
+// 全局阻止拖文件到页面时浏览器直接打开图片
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
 
 $("url").addEventListener("input", () => {
   const v = $("url").value.trim();

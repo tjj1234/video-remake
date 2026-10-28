@@ -121,6 +121,10 @@ const klingMotion = {
   //   character_orientation=image → 参考视频 ≤10s；=video → ≤30s
   //   keep_original_sound ∈ {yes,no}；prompt ≤2500
   fit(src, prompt, opts = {}) {
+    // image_url 是必填项：没有图直接报错，绝不发出 image_url=null 的请求
+    if (!opts.imageUrl) {
+      throw new Error("Kling 运镜需要参考图（image_url 必填），但未取到图：请从源视频抽帧，或手动上传一张截图。");
+    }
     const short = src.shortSide || 720;
     // 源视频短边 ≥ 960 视为想要高清 → pro(1080P)，否则 std(720P)
     const mode = short >= 960 ? "pro" : "std";
@@ -174,6 +178,10 @@ const minimax = {
   // 官方约束：size ∈ {768P, 1080P}（没有 720P）；seconds ∈ {6,10}；
   //   10s 时 1080P 不可用（只有 768P）
   fit(src, prompt, opts = {}) {
+    // image 是必填项：没有图直接报错，绝不发出 image=undefined 的请求
+    if (!opts.imageUrl) {
+      throw new Error("MiniMax 需要参考图（image 必填），但未取到图：请从源视频抽帧，或手动上传一张截图。");
+    }
     const want = src.duration || 6;
     // 时长只能 6 或 10：≤8s 选 6，>8s 选 10
     const dur = want <= 8 ? "6" : "10";

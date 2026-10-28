@@ -101,5 +101,37 @@ check("orientation 竖屏", orientation(1080, 1920) === "portrait");
 const unknown = { duration: 5, width: 0, height: 0, shortSide: 0, fps: 0, hasAudio: true };
 check("无尺寸信息时 Wan 仍可用", (() => { try { getAdapter("wan2.7-r2v").fit(unknown, "P", opts()); return true; } catch { return false; } })());
 
+// ---------- 回归：wan2.7-r2v 拒绝 adaptive（线上实测 400）----------
+// 报错原文：wan2.7-r2v only supports ratio 16:9, 9:16, 1:1, 4:3, or 3:4
+const WAN_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4"];
+const weird = [
+  [0, 0], [1920, 1080], [1080, 1920], [1000, 1000],
+  [2000, 1000],   // 2:1 极端宽屏，旧逻辑会回退 adaptive
+  [1000, 2000],   // 1:2 极端竖屏
+  [1440, 1080], [1024, 768], [800, 600],
+];
+{
+  let allLegal = true, bad = "";
+  for (const [w, h] of weird) {
+    const r = getAdapter("wan2.7-r2v").fit(
+      { duration: 5, width: w, height: h, shortSide: Math.min(w, h) || 720 }, "P", opts()
+    ).body.ratio;
+    if (!WAN_RATIOS.includes(r)) { allLegal = false; bad += `${w}x${h}→${r} `; }
+  }
+  check("Wan ratio 永远在合法枚举内（绝不 adaptive）", allLegal, bad);
+}
+check("guessRatio 极端宽屏 2:1 不回退 adaptive", guessRatio(2000, 1000) !== "adaptive");
+check("guessRatio 极端竖屏 1:2 不回退 adaptive", guessRatio(1000, 2000) !== "adaptive");
+check("guessRatio 无尺寸时给出合法值", WAN_RATIOS.includes(guessRatio(0, 0)));
+
+// ---------- 回归：缺图时应明确报错而非静默跳过 ----------
+{
+  let e1 = null, e2 = null;
+  try { getAdapter("MiniMax-Hailuo-2.3").fit(srcLandscape, "P", opts({ imageUrl: null })); } catch (e) { e1 = e; }
+  try { getAdapter("kling-v3").fit(srcLandscape, "P", opts({ imageUrl: null })); } catch (e) { e2 = e; }
+  check("MiniMax 缺图 → 明确报错", !!e1 && e1.message.includes("image"));
+  check("Kling 缺图 → 明确报错", !!e2 && e2.message.includes("image_url"));
+}
+
 writeFileSync(DIR + "\\.adaptertest.txt", out.join("\n") + `\n\n通过 ${pass} / 共 ${pass + fail}`, "utf-8");
 process.exitCode = fail ? 1 : 0;
