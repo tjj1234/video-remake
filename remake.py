@@ -25,6 +25,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,7 +53,9 @@ PT_VIDEO_SCRIPT = os.environ.get(
 )
 # ① 普通分镜生成模型（图生视频，默认最便宜最稳）
 GEN_MODEL = os.environ.get("REMAKE_GEN_MODEL", "wan3.0-video")
-# ③ 动作迁移模型（需支持 --ref-video，Kling/Seedance 系列）
+# ③ 动作迁移模型（需支持 --ref-video）
+# 注意：不要用 Seedance 系列 —— 需先签《Asset Library User Agreement》且素材只收 asset://，
+# 外部 http(s) 会被前置拒绝，与本脚本「直接吃源视频 URL」的模式不兼容。
 MOTION_MODEL = os.environ.get("REMAKE_MOTION_MODEL", "kling-v2-1-master")
 GEN_DURATION = int(os.environ.get("REMAKE_GEN_DURATION", "5"))
 RESOLUTION = os.environ.get("REMAKE_RESOLUTION", "720p")
@@ -418,7 +421,7 @@ def main() -> None:
     ap.add_argument("--use-vision", action="store_true",
                     help="② 开启视觉风格提取（需多模态模型，失败自动降级）")
     ap.add_argument("--action-migration", action="store_true",
-                    help="③ 开启动作迁移（用 --ref-video，需 Kling/Seedance 模型）")
+                    help="③ 开启动作迁移（用 --ref-video，需 Kling/Wan 系列；不支持 Seedance）")
     ap.add_argument("--gen-model", default=GEN_MODEL, help="① 普通分镜生成模型")
     ap.add_argument("--motion-model", default=MOTION_MODEL, help="③ 动作迁移模型")
     ap.add_argument("--transcript", help="手动提供字幕（不走 whisper 时使用）")
@@ -430,6 +433,16 @@ def main() -> None:
 
     GEN_MODEL = args.gen_model
     MOTION_MODEL = args.motion_model
+
+    # Seedance 全系禁用：需先签《Asset Library User Agreement》+ 素材只收 asset://，
+    # 与本脚本「直接吃源视频 URL」的模式冲突，提前拦住避免跑到一半才报错。
+    _SEEDANCE_RE = re.compile(r"seedance|seedream|dreamina", re.IGNORECASE)
+    for _label, _m in (("--gen-model", GEN_MODEL), ("--motion-model", MOTION_MODEL)):
+        if _SEEDANCE_RE.search(_m):
+            log(f"不支持 Seedance 系列模型（{_label}={_m}）")
+            log("原因：需先签《Asset Library User Agreement》，且媒体只收 asset://，外部 http(s) 会被拒。")
+            log("请改用：kling-v2-1-master / kling-video-o1 / kling-v3 / wan2.7-r2v")
+            sys.exit(1)
 
     workdir = os.path.dirname(os.path.abspath(args.output))
     os.makedirs(workdir, exist_ok=True)

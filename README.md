@@ -42,7 +42,37 @@
 | `kling-v3` | ✅ | — |
 | `wan2.7-r2v` | ✅ | Wan 参考视频 |
 | `wan3.0-video` | ❌ | 不收参考视频 |
-| `seedance-*` | ❌ | 媒体只收 `asset://`，外部 http(s) 被前置拒绝 |
+| `seedance-*` / `seedream-*` / `dreamina-seedance-*` | ⛔ **禁用** | 见下节 |
+
+### ⛔ 为什么不支持 Seedance（整族禁用）
+
+**结论：本项目主动屏蔽 Seedance 全系，不做任何兼容。**
+
+原因有两条，且都与本应用的输入模式天然冲突：
+
+1. **需要手工签协议**：Seedance 全系必须先在仪表盘签《Asset Library User Agreement》
+   （<https://powertokens.ai/assets-library?tab=1>），**无 API 可代签**，属于人工阻塞步骤。
+2. **素材只收 `asset://`**：外部 `http(s)` 会被**前置拒绝**。要用它就必须先
+   `upload` 把本地文件换成 `asset_id`，才能以 `asset://<id>` 传入。
+
+而本应用的输入就是**「源视频公网 URL」直接交给 PT 服务端下载**——既没有本地文件可上传，
+也不该为了用某个模型而给用户加一道「先签名再传素材」的流程。所以整族禁用。
+
+拦截生效位置（三层，不会漏）：
+
+- 模型下拉框：从 `/v1/models` 拉到的列表里**过滤掉**，并提示「已跳过 N 个 Seedance 系列模型」
+- `supportsRefVideo()`：`seedance` / `seedream` / `dreamina` 一律返回 `false`
+- 运行前兜底：即使用 URL 参数或手填绕进下拉框，也会在提交前拦截并给出替代模型
+
+命令行同样拦截，输出示例：
+
+```
+[err] 不支持 Seedance 系列模型：dreamina-seedance-2-0-260128
+[err] 原因：Seedance 全系需先在仪表盘签《Asset Library User Agreement》，
+[err]       且媒体只收 asset://（必须先 upload 换 asset_id），外部 http(s) 会被前置拒绝。
+[err] 本引擎输入是源视频公网 URL，与该协议天然冲突，因此不做兼容。
+[err] 请改用：kling-v2-1-master / kling-video-o1 / kling-v3 / wan2.7-r2v
+```
 
 ## 🎭 人物必须换（IP-safe 重制）
 

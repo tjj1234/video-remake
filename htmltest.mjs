@@ -27,7 +27,13 @@ check("参考视频 media.reference_video", code.includes('type: "reference_vide
 check("CASTING RULE 存在", code.includes("CASTING RULE"));
 check("禁止复现人物", code.includes("MUST NOT reproduce any person"));
 check("换角开关元素", html.includes('id="swapCast"') && html.includes("checked"));
-check("seedance 排除", code.includes("seedance") && code.includes("return false"));
+check("SEEDANCE_RE 黑名单存在", code.includes("SEEDANCE_RE") && code.includes("isSeedance"));
+check("黑名单覆盖 seedance/seedream/dreamina", /seedance\|seedream\|\\bdreamina/.test(code));
+check("supportsRefVideo 拦截 Seedance", /function supportsRefVideo[\s\S]{0,200}isSeedance\(m\)[\s\S]{0,40}return false/.test(code));
+check("loadModels 过滤 Seedance", /loadModels[\s\S]{0,1200}!isSeedance\(id\)/.test(code));
+check("运行前拦截 Seedance 并给替代", code.includes("不支持 Seedance 系列") && code.includes("REF_VIDEO_SUGGEST"));
+check("提示已跳过 Seedance 数量", code.includes("已跳过"));
+check("替代建议不含 seedance", !/REF_VIDEO_SUGGEST\s*=\s*"[^"]*seedance/i.test(code));
 check("wan3 排除", code.includes('startsWith("wan3")'));
 check("seconds 转字符串", code.includes("String(dur)"));
 check("轮询路径 /v1/videos/{id}", code.includes('"/v1/videos/" + taskId'));

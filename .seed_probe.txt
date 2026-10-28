@@ -1,0 +1,7 @@
+=== Video Remake Engine ===
+模型：dreamina-seedance-2-0-260128  类型：seedance
+[err] 不支持 Seedance 系列模型：dreamina-seedance-2-0-260128
+[err] 原因：Seedance 全系需先在仪表盘签《Asset Library User Agreement》，
+[err]       且媒体只收 asset://（必须先 upload 换 asset_id），外部 http(s) 会被前置拒绝。
+[err] 本引擎输入是源视频公网 URL，与该协议天然冲突，因此不做兼容。
+[err] 请改用：kling-v2-1-master / kling-video-o1 / kling-v3 / wan2.7-r2v

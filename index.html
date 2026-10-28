@@ -221,28 +221,33 @@ async function ptReq(method, path, key, body) {
 
 // ---------- 模型能力（以官方 powertokens-video skill 为准） ----------
 // 所有视频模型统一 POST /v1/videos；参考视频 = media[{type:"reference_video",url}]
-// seedance 系媒体只收 asset:// → 不能直接用源视频 http(s) URL
 const KNOWN = {
   "kling-v2-1-master": { ref: true,  note: "Kling 参考视频，动作/走位迁移最稳" },
   "kling-video-o1":    { ref: true,  note: "Kling O1，性价比高" },
   "kling-v3":          { ref: true,  note: "Kling v3" },
   "wan2.7-r2v":        { ref: true,  note: "Wan r2v 参考视频" },
   "wan3.0-video":      { ref: false, note: "Wan3.0 不收参考视频" },
-  "seedance-1-5-pro-251215": { ref: false, note: "需 asset:// 素材 + 签协议" },
 };
 const FALLBACK_MODELS = ["kling-v2-1-master", "kling-video-o1", "kling-v3", "wan2.7-r2v"];
 const DEFAULT_ORDER = ["kling-v2-1-master", "kling-video-o1", "kling-v3", "wan2.7-r2v"];
+const REF_VIDEO_SUGGEST = "kling-v2-1-master / kling-video-o1 / kling-v3 / wan2.7-r2v";
+
+// ---------- Seedance 黑名单 ----------
+// Seedance 全系需先签《Asset Library User Agreement》，且媒体只收 asset://，
+// 外部 http(s) 被前置拒绝 —— 与本应用「直接吃源视频 URL」的模式天然冲突，整族禁用。
+const SEEDANCE_RE = /seedance|seedream|\bdreamina\b/i;
+function isSeedance(id) { return SEEDANCE_RE.test(String(id || "")); }
 
 function isVideoModel(id) {
   const m = String(id).toLowerCase();
-  if (m.includes("image") || m.includes("seedream") || m.includes("qwen-image")) return false;
+  if (m.includes("image") || m.includes("qwen-image")) return false;
   if (m.includes("tts") || m.includes("asr") || m.includes("embed")) return false;
   return true;
 }
 function supportsRefVideo(id) {
   const m = String(id).toLowerCase();
+  if (isSeedance(m)) return false;
   if (KNOWN[m]) return KNOWN[m].ref;
-  if (m.includes("seedance")) return false;
   if (m.startsWith("wan3")) return false;
   if (m.startsWith("kling") || m.startsWith("wan2") || m.includes("hailuo") || m.startsWith("vidu")) return true;
   return false;
@@ -265,7 +270,11 @@ async function loadModels(key) {
     log("读取模型列表失败：" + e.message + "（改用内置列表）", "warn");
     ids = FALLBACK_MODELS.slice();
   }
-  const usable = ids.filter((id) => isVideoModel(id) && supportsRefVideo(id));
+  const skippedSeedance = ids.filter(isSeedance);
+  if (skippedSeedance.length) {
+    log("已跳过 " + skippedSeedance.length + " 个 Seedance 系列模型（需 asset:// 素材 + 签协议，不兼容直接吃 URL）", "warn");
+  }
+  const usable = ids.filter((id) => isVideoModel(id) && !isSeedance(id) && supportsRefVideo(id));
   const sel = $("model");
   sel.innerHTML = "";
   if (!usable.length) {
@@ -375,7 +384,10 @@ async function runFlow() {
 
     const model = $("model").value;
     if (!model) throw new Error("没有可用的参考视频模型，请点「检测 Key」刷新");
-    if (!supportsRefVideo(model)) throw new Error("该模型不接受参考视频：" + model);
+    if (isSeedance(model)) {
+      throw new Error("不支持 Seedance 系列（需先签《Asset Library User Agreement》，且素材只收 asset://，不兼容直接吃 URL）。请改用 " + REF_VIDEO_SUGGEST);
+    }
+    if (!supportsRefVideo(model)) throw new Error("该模型不接受参考视频，请改用 " + REF_VIDEO_SUGGEST);
     log("模型：" + model, "ok");
     setProg(18);
 

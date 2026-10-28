@@ -20,29 +20,38 @@ const log = (s, c) => { L.push((c ? "[" + c + "] " : "") + s); };
 
 // ---------- 模型能力表 ----------
 // supportsRefVideo: 该模型是否接受 media[type=reference_video]
-// seedance 系：媒体只收 asset://，外部 http(s) 会被前置拒绝 → 不能直接用源视频 URL
 const MODELS = {
   "kling-v2-1-master": { ref: true,  type: "video", note: "Kling 动作/参考视频，表现最稳" },
   "kling-video-o1":    { ref: true,  type: "video", note: "Kling O1，性价比高" },
   "kling-v3":          { ref: true,  type: "video", note: "Kling v3" },
   "wan2.7-r2v":        { ref: true,  type: "video", note: "Wan r2v（参考视频）" },
   "wan3.0-video":      { ref: false, type: "video", note: "Wan3.0 纯文生/图生，不收参考视频" },
-  "seedance-1-5-pro-251215": { ref: false, type: "seedance", note: "需 asset:// + 签协议" },
 };
+
+// ---------- Seedance 黑名单 ----------
+// 用户明确要求回避：Seedance 全系需要先在仪表盘签《Asset Library User Agreement》，
+// 且媒体只收 asset://（必须先 upload 换 asset_id），外部 http(s) 会被前置拒绝 —— 链路太麻烦。
+// 本引擎的输入是「源视频公网 URL」，天然与之冲突，因此整族直接禁掉，不做兼容。
+const SEEDANCE_RE = /seedance|seedream|\bdreamina\b/i;
+function isSeedance(model) { return SEEDANCE_RE.test(String(model || "")); }
+// 全量候选里剔除 Seedance（用于列表中过滤）
+function withoutSeedance(models) { return models.filter((m) => !isSeedance(m)); }
+// 给用户的替代建议（不含任何 Seedance 模型）
+const REF_VIDEO_SUGGEST = "kling-v2-1-master / kling-video-o1 / kling-v3 / wan2.7-r2v";
 
 // 供应商族 → 是否支持 ref video（用于用户手填模型名时的兜底判断）
 function supportsRefVideo(model) {
   const m = String(model || "").toLowerCase();
+  if (isSeedance(m)) return false;
   if (MODELS[m]) return MODELS[m].ref;
-  if (m.includes("seedance")) return false;      // 媒体只收 asset://
   if (m.startsWith("wan3")) return false;
   return true;                                    // kling / wan(非3.0) / hailuo / vidu 默认支持
 }
 function modelType(model) {
   const m = String(model || "").toLowerCase();
   if (MODELS[m]) return MODELS[m].type;
-  if (m.includes("seedance")) return "seedance";
-  if (m.includes("image") || m.includes("seedream") || m.includes("qwen-image")) return "image";
+  if (isSeedance(m)) return "seedance";
+  if (m.includes("image") || m.includes("qwen-image")) return "image";
   return "video";
 }
 
@@ -133,6 +142,16 @@ async function main() {
   log("=== Video Remake Engine ===");
   log("模型：" + model + "  类型：" + modelType(model) + (MODELS[model] ? "  (" + MODELS[model].note + ")" : ""));
 
+  // Seedance 整族前置拦截（用户要求：链路太麻烦，统一回避）
+  if (isSeedance(model)) {
+    log("不支持 Seedance 系列模型：" + model, "err");
+    log("原因：Seedance 全系需先在仪表盘签《Asset Library User Agreement》，", "err");
+    log("      且媒体只收 asset://（必须先 upload 换 asset_id），外部 http(s) 会被前置拒绝。", "err");
+    log("本引擎输入是源视频公网 URL，与该协议天然冲突，因此不做兼容。", "err");
+    log("请改用：" + REF_VIDEO_SUGGEST, "err");
+    return flush();
+  }
+
   if (modelType(model) === "image") { log("这是图片模型，不能用于视频重制：" + model, "err"); return flush(); }
 
   const { url: src, direct } = resolveSourceUrl(url);
@@ -141,7 +160,7 @@ async function main() {
 
   if (!supportsRefVideo(model)) {
     log("该模型不接受参考视频（reference_video），无法做「同构图重制」：" + model, "err");
-    log("建议改用 kling-v2-1-master / kling-video-o1 / wan2.7-r2v", "err");
+    log("请改用：" + REF_VIDEO_SUGGEST, "err");
     return flush();
   }
 

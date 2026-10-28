@@ -42,15 +42,36 @@ check("规则在创作方向之前", o.indexOf("CASTING RULE") < o.indexOf("雨�
 o = run(["--dry-run", "--url", SRC, "--model", "wan2.7-r2v"]);
 check("wan2.7-r2v 支持参考视频", o.includes('"model": "wan2.7-r2v"') && o.includes("reference_video"));
 
-// 4. 不支持参考视频的模型应被拒
+// 4. Seedance 整族前置拦截（用户明确要求回避）
+const seedCases = [
+  "seedance-1-5-pro-251215",
+  "dreamina-seedance-2-0-fast-260128",
+  "dreamina-seedance-2-0-260128",
+  "seedance-2-5-pro",
+];
+let seedAllBlocked = true;
+let seedSample = "";
+for (const m of seedCases) {
+  const so = run(["--dry-run", "--url", SRC, "--model", m]);
+  const blocked = so.includes("不支持 Seedance 系列模型") && so.includes("Asset Library");
+  if (!blocked) { seedAllBlocked = false; seedSample = m + " → " + so.split("\n").slice(1, 3).join(" / "); }
+}
+check("Seedance 全系（4 个变体）被前置拦截", seedAllBlocked, seedSample);
+
 o = run(["--dry-run", "--url", SRC, "--model", "seedance-1-5-pro-251215"]);
-check("seedance 被拒（需 asset://）", o.includes("不接受参考视频"));
+check("Seedance 拒绝原因含 Asset Library", o.includes("Asset Library User Agreement"));
+check("Seedance 拒绝说明 asset:// 限制", o.includes("asset://"));
+check("Seedance 拒绝给出替代模型", o.includes("kling-v2-1-master"));
+check("Seedance 拒绝时不给 Seedance 作建议", !o.split("请改用")[1]?.toLowerCase().includes("seedance"));
+
+// 5. wan3.0 不支持参考视频
 o = run(["--dry-run", "--url", SRC, "--model", "wan3.0-video"]);
 check("wan3.0 被拒（不收参考视频）", o.includes("不接受参考视频"));
+check("wan3.0 拒绝也给出替代", o.includes("kling-v2-1-master"));
 
-// 5. 图片模型被拒
+// 6. 图片模型被拒（seedream 同时属 Seedance 黑名单，任一路径拦截均可）
 o = run(["--dry-run", "--url", SRC, "--model", "seedream-5-0-260128"]);
-check("图片模型被拒", o.includes("不能用于视频重制"));
+check("图片模型被拒", o.includes("不能用于视频重制") || o.includes("不支持 Seedance"));
 
 // 6. 非法链接
 o = run(["--dry-run", "--url", "ftp://x/y.mp4"]);
