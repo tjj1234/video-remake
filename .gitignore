@@ -5,6 +5,9 @@
 .alltests.txt
 .livecheck.txt
 .mock_probe.txt
+.seed_probe.txt
+.summary.txt
+.*_probe.txt
 out/
 __pycache__/
 *.pyc
