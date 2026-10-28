@@ -1,0 +1,11 @@
+# 测试/运行输出（不纳入版本控制）
+.engine_out.txt
+.selftest.txt
+.htmltest.txt
+.alltests.txt
+.livecheck.txt
+.mock_probe.txt
+out/
+__pycache__/
+*.pyc
+.env
