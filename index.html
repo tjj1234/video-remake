@@ -86,6 +86,12 @@
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
   .legal { font-size: 12px; color: var(--muted); border-left: 3px solid var(--warn); padding: 8px 12px; background: rgba(255,180,84,.06); border-radius: 8px; margin-bottom: 16px; }
   .cast { font-size: 12px; color: var(--muted); border-left: 3px solid var(--ok); padding: 8px 12px; background: rgba(70,211,154,.07); border-radius: 8px; margin-top: 10px; }
+  .cast code { background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+  .fixed { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .fixed-row { display: flex; gap: 12px; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+  .fixed-row:last-child { border-bottom: none; }
+  .fixed-k { flex: 0 0 96px; color: var(--muted); }
+  .fixed-v { flex: 1; color: var(--text); }
   .hidden { display: none; }
   footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
   a { color: var(--brand); }
@@ -127,37 +133,40 @@
   </div>
 
   <div class="card">
-    <h2><span class="n">2</span> 生成参数</h2>
-    <div class="opts">
-      <div>
-        <label>模型（仅列出支持「参考视频」的模型）</label>
-        <select id="model"><option value="">加载中…</option></select>
+    <h2><span class="n">2</span> 模型与参数（已固定，无需选择）</h2>
+
+    <div class="fixed">
+      <div class="fixed-row">
+        <span class="fixed-k">模型优先级</span>
+        <span class="fixed-v">Wan 2.7 r2v → MiniMax Hailuo 2.3 → Kling v3 运镜</span>
       </div>
-      <div>
-        <label>时长（秒）</label>
-        <select id="duration">
-          <option>5</option><option>10</option>
-        </select>
+      <div class="fixed-row">
+        <span class="fixed-k">失败处理</span>
+        <span class="fixed-v">自动降级到下一个模型（首个成功即停止）</span>
       </div>
-      <div>
-        <label>分辨率</label>
-        <select id="resolution">
-          <option value="720p">720p</option>
-          <option value="1080p">1080p</option>
-        </select>
+      <div class="fixed-row">
+        <span class="fixed-k">时长 / 尺寸</span>
+        <span class="fixed-v">自动匹配原视频（各模型按自身合法取值就近取整）</span>
       </div>
-    </div>
-    <div class="check">
-      <input type="checkbox" id="sound" /> 开启声音（部分模型支持）
     </div>
 
-    <div class="check" style="margin-top:12px;">
+    <div class="check" style="margin-top:14px;">
       <input type="checkbox" id="swapCast" checked />
       强制更换人物（默认开启）：重制版不得出现与原片相同的人物形象
     </div>
     <div class="cast">
       🎭 换角规则：生成时会把「不得复现原片任何人物面孔/身份」作为强制约束写进提示词，
       并把参考视频仅当作走位与运镜参考，人物一律重新选角（不同面孔、年龄、发型、体型、服装）。
+    </div>
+
+    <div class="cast" style="border-left-color: var(--brand); background: rgba(109,139,255,.07);">
+      ⚙️ 各模型参数差异已内置：Wan 走 <code>/v1/videos</code>（480P/720P/1080P，2–30s）；
+      MiniMax 只有 768P/1080P 且只能 6 或 10 秒；Kling 走原生运镜端点，时长由参考视频决定。
+      页面会自动挑选最接近原片的合法取值，你不需要关心。
+    </div>
+
+    <div class="cast" style="border-left-color: var(--warn); background: rgba(255,180,84,.06);">
+      ⛔ Seedance 全系已禁用：需先签 Asset Library 协议，且素材只收 asset://，与「直接吃视频链接」不兼容。
     </div>
   </div>
 
@@ -219,77 +228,154 @@ async function ptReq(method, path, key, body) {
   return json;
 }
 
-// ---------- 模型能力（以官方 powertokens-video skill 为准） ----------
-// 所有视频模型统一 POST /v1/videos；参考视频 = media[{type:"reference_video",url}]
-const KNOWN = {
-  "kling-v2-1-master": { ref: true,  note: "Kling 参考视频，动作/走位迁移最稳" },
-  "kling-video-o1":    { ref: true,  note: "Kling O1，性价比高" },
-  "kling-v3":          { ref: true,  note: "Kling v3" },
-  "wan2.7-r2v":        { ref: true,  note: "Wan r2v 参考视频" },
-  "wan3.0-video":      { ref: false, note: "Wan3.0 不收参考视频" },
-};
-const FALLBACK_MODELS = ["kling-v2-1-master", "kling-video-o1", "kling-v3", "wan2.7-r2v"];
-const DEFAULT_ORDER = ["kling-v2-1-master", "kling-video-o1", "kling-v3", "wan2.7-r2v"];
-const REF_VIDEO_SUGGEST = "kling-v2-1-master / kling-video-o1 / kling-v3 / wan2.7-r2v";
-
 // ---------- Seedance 黑名单 ----------
 // Seedance 全系需先签《Asset Library User Agreement》，且媒体只收 asset://，
 // 外部 http(s) 被前置拒绝 —— 与本应用「直接吃源视频 URL」的模式天然冲突，整族禁用。
 const SEEDANCE_RE = /seedance|seedream|\bdreamina\b/i;
 function isSeedance(id) { return SEEDANCE_RE.test(String(id || "")); }
 
-function isVideoModel(id) {
-  const m = String(id).toLowerCase();
-  if (m.includes("image") || m.includes("qwen-image")) return false;
-  if (m.includes("tts") || m.includes("asr") || m.includes("embed")) return false;
-  return true;
-}
-function supportsRefVideo(id) {
-  const m = String(id).toLowerCase();
-  if (isSeedance(m)) return false;
-  if (KNOWN[m]) return KNOWN[m].ref;
-  if (m.startsWith("wan3")) return false;
-  if (m.startsWith("kling") || m.startsWith("wan2") || m.includes("hailuo") || m.startsWith("vidu")) return true;
-  return false;
-}
-function modelNote(id) {
-  return KNOWN[String(id).toLowerCase()]?.note || "";
-}
-function pickDefault(list) {
-  for (const d of DEFAULT_ORDER) if (list.includes(d)) return d;
-  return list[0] || "";
+// ---------- 探针：读原视频时长/尺寸，并抽一帧做参考图 ----------
+// 浏览器无法跑 ffprobe，但可加载媒体元数据（duration/videoWidth），并用 canvas 抽帧。
+// 抽出的帧转 base64 data URL：Kling 官方支持 Base64，MiniMax 支持 Data URL。
+function loadVideoEl(url, timeoutMs = 20000) {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.preload = "auto";
+    v.muted = true;
+    v.playsInline = true;
+    v.crossOrigin = "anonymous";   // 尽量拿到不被污染的画布
+    let done = false;
+    const finish = (meta) => { if (done) return; done = true; resolve(Object.assign({ el: v }, meta)); };
+    const timer = setTimeout(() => finish({ duration: 0, width: 0, height: 0, shortSide: 0, ok: false, reason: "探测超时" }), timeoutMs);
+    v.onloadedmetadata = () => {
+      clearTimeout(timer);
+      const w = v.videoWidth || 0, h = v.videoHeight || 0;
+      finish({
+        duration: Number.isFinite(v.duration) ? +v.duration.toFixed(2) : 0,
+        width: w, height: h, shortSide: Math.min(w, h),
+        ok: !!(v.duration && w && h), reason: "",
+      });
+    };
+    v.onerror = () => {
+      clearTimeout(timer);
+      finish({ duration: 0, width: 0, height: 0, shortSide: 0, ok: false, reason: "无法读取视频元数据（可能跨域限制）" });
+    };
+    v.src = url;
+  });
 }
 
-async function loadModels(key) {
-  let ids = [];
+// 从已加载的 video 元素抽一帧，返回 data URL（失败返回 null）
+async function grabFrame(videoEl, atSec = 0.5, maxWidth = 1280) {
+  if (!videoEl || !videoEl.videoWidth) return null;
   try {
-    const data = await ptReq("GET", "/v1/models", key);
-    const arr = data?.data || data?.models || [];
-    ids = arr.map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
+    await new Promise((res, rej) => {
+      const to = setTimeout(() => rej(new Error("seek timeout")), 12000);
+      videoEl.onseeked = () => { clearTimeout(to); res(); };
+      videoEl.currentTime = Math.min(atSec, Math.max(0, (videoEl.duration || 1) / 2));
+    });
+    const w = videoEl.videoWidth, h = videoEl.videoHeight;
+    const scale = Math.min(1, maxWidth / w);
+    const c = document.createElement("canvas");
+    c.width = Math.round(w * scale);
+    c.height = Math.round(h * scale);
+    c.getContext("2d").drawImage(videoEl, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.9);
   } catch (e) {
-    log("读取模型列表失败：" + e.message + "（改用内置列表）", "warn");
-    ids = FALLBACK_MODELS.slice();
+    return null;   // 跨域污染或 seek 失败
   }
-  const skippedSeedance = ids.filter(isSeedance);
-  if (skippedSeedance.length) {
-    log("已跳过 " + skippedSeedance.length + " 个 Seedance 系列模型（需 asset:// 素材 + 签协议，不兼容直接吃 URL）", "warn");
-  }
-  const usable = ids.filter((id) => isVideoModel(id) && !isSeedance(id) && supportsRefVideo(id));
-  const sel = $("model");
-  sel.innerHTML = "";
-  if (!usable.length) {
-    sel.innerHTML = '<option value="">（账号下没有可用于参考视频的模型）</option>';
-    return;
-  }
-  for (const id of usable) {
-    const o = document.createElement("option");
-    o.value = id;
-    o.textContent = id + (modelNote(id) ? "  ·  " + modelNote(id) : "");
-    sel.appendChild(o);
-  }
-  sel.value = pickDefault(usable);
-  log("已加载 " + usable.length + " 个支持参考视频的模型，默认：" + sel.value, "ok");
 }
+
+function guessRatio(width, height) {
+  if (!width || !height) return "adaptive";
+  const r = width / height;
+  const table = [["16:9", 16 / 9], ["4:3", 4 / 3], ["1:1", 1], ["3:4", 3 / 4], ["9:16", 9 / 16]];
+  let best = table[0], bestDiff = Infinity;
+  for (const t of table) {
+    const d = Math.abs(r - t[1]);
+    if (d < bestDiff) { bestDiff = d; best = t; }
+  }
+  return bestDiff < 0.14 ? best[0] : "adaptive";
+}
+function orientation(w, h) {
+  if (!w || !h) return "unknown";
+  const r = w / h;
+  return r > 1.15 ? "landscape" : r < 0.87 ? "portrait" : "square";
+}
+function nearestSize(candidates, shortSide) {
+  const px = (c) => parseInt(c, 10);
+  let best = candidates[0], diff = Infinity;
+  for (const c of candidates) {
+    const d = Math.abs(px(c) - (shortSide || 720));
+    if (d < diff) { diff = d; best = c; }
+  }
+  return best;
+}
+
+// ---------- 模型适配器（与 engine.mjs/adapters.mjs 同一套规则）----------
+// Wan 系 → /v1/videos；Kling → 原生运镜端点；MiniMax → /v1/videos（image 必填）
+const ADAPTERS = [
+  {
+    id: "wan2.7-r2v", label: "Wan 2.7 r2v", endpoint: "/v1/videos", needsImage: false,
+    fit(meta, prompt, o) {
+      const dur = Math.min(Math.max(2, Math.round(meta.duration || 5)), Math.min(10, Math.max(2, 30 - Math.ceil(meta.duration || 0))));
+      const size = nearestSize(["480P", "720P", "1080P"], meta.shortSide);
+      return {
+        path: this.endpoint,
+        body: {
+          model: this.id, prompt, size,
+          ratio: guessRatio(meta.width, meta.height),
+          seconds: String(dur),
+          generate_audio: o.sound !== false,
+          prompt_extend: true, watermark: false,
+          media: [{ type: "reference_video", url: o.sourceUrl }],
+        },
+        applied: { dur, size },
+      };
+    },
+  },
+  {
+    id: "MiniMax-Hailuo-2.3", label: "MiniMax Hailuo 2.3", endpoint: "/v1/videos", needsImage: true,
+    // 只有 768P/1080P；seconds 只有 6 或 10；10s 时 1080P 不可用
+    fit(meta, prompt, o) {
+      if (!o.imageUrl) throw new Error("需要参考帧（image 必填），但未取到图");
+      const dur = (meta.duration || 6) <= 8 ? "6" : "10";
+      let size = (meta.shortSide || 0) >= 960 ? "1080P" : "768P";
+      if (dur === "10") size = "768P";
+      return {
+        path: this.endpoint,
+        body: { model: this.id, image: o.imageUrl, prompt: String(prompt).slice(0, 2000), seconds: dur, size },
+        applied: { dur, size },
+      };
+    },
+  },
+  {
+    id: "kling-v3", label: "Kling v3 运镜", endpoint: "/kling/v1/videos/motion-control", needsImage: true,
+    // 原生端点：model_name + image_url + video_url + character_orientation + mode；无 size/seconds
+    fit(meta, prompt, o) {
+      if (!o.imageUrl) throw new Error("需要参考帧（image_url 必填），但未取到图");
+      const mode = (meta.shortSide || 720) >= 960 ? "pro" : "std";
+      const orient = orientation(meta.width, meta.height);
+      const charOrient = orient === "landscape" ? "video" : "image";
+      const maxRef = charOrient === "image" ? 10 : 30;
+      const refDur = meta.duration || 0;
+      if (refDur > maxRef) {
+        throw new Error("源视频 " + refDur.toFixed(1) + "s 超过 Kling 运镜上限 " + maxRef + "s（朝向=" + charOrient + "）");
+      }
+      return {
+        path: this.endpoint,
+        body: {
+          model_name: this.id, mode,
+          image_url: o.imageUrl,
+          video_url: o.sourceUrl,
+          prompt: String(prompt).slice(0, 2500),
+          character_orientation: charOrient,
+          keep_original_sound: o.sound === false ? "no" : "yes",
+        },
+        applied: { mode, charOrient, dur: refDur },
+      };
+    },
+  },
+];
 
 // ---------- 源链接 ----------
 const DIRECT_EXT = /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i;
@@ -301,7 +387,6 @@ function resolveSourceUrl(raw) {
 }
 
 // ---------- 人物替换规则 ----------
-// 「不得出现相同人物」= 重新选角，不是换脸；把这条作为强制约束写进提示词。
 const PERSONA_RULE = [
   "[CASTING RULE — MANDATORY]",
   "The output MUST NOT reproduce any person, face, likeness, or identity appearing in the reference video.",
@@ -318,7 +403,6 @@ function composePrompt(bodyText, swapCast) {
   return PERSONA_RULE + " Creative direction: " + core;
 }
 
-// ---------- AI 润色 ----------
 async function polish(key, direction) {
   const dir = String(direction || "").trim();
   if (!dir) return "";
@@ -329,42 +413,19 @@ async function polish(key, direction) {
     "Output the prompt only, no explanation.";
   const data = await ptReq("POST", "/v1/chat/completions", key, {
     model: "deepseek-v4-pro",
-    messages: [
-      { role: "system", content: sys },
-      { role: "user", content: "Direction: " + dir },
-    ],
+    messages: [{ role: "system", content: sys }, { role: "user", content: "Direction: " + dir }],
     max_tokens: 600,
   });
   return data?.choices?.[0]?.message?.content?.trim() || dir;
 }
 
-// ---------- 请求体（统一契约） ----------
-function buildBody(model, sourceUrl, prompt, opts) {
-  const dur = Math.min(30, Math.max(2, parseInt(opts.duration, 10) || 5));
-  const r = String(opts.resolution || "720p").toUpperCase();
-  const size = r.includes("1080") ? "1080P" : r.includes("480") ? "480P" : "720P";
-  const body = {
-    model,
-    prompt,
-    size,
-    ratio: "adaptive",
-    seconds: String(dur),
-    generate_audio: !!opts.sound,
-    prompt_extend: true,
-    watermark: false,
-  };
-  if (supportsRefVideo(model) && sourceUrl) {
-    body.media = [{ type: "reference_video", url: sourceUrl }];
-  }
-  return body;
-}
-
 function extractUrl(task) {
   const meta = task?.metadata || {};
-  return meta.url || meta.content_url || task?.url || null;
+  return meta.url || meta.content_url || task?.url
+    || task?.data?.task_result?.videos?.[0]?.url || null;
 }
 
-// ---------- 主流程 ----------
+// ---------- 主流程：固定模型链 + 自动降级 ----------
 async function runFlow() {
   const key = $("key").value.trim();
   if (!key && !MOCK) { alert("请填写 PowerTokens Key"); return; }
@@ -380,18 +441,27 @@ async function runFlow() {
     const { url, direct } = resolveSourceUrl($("url").value);
     log("源视频：" + url);
     if (!direct) log("非标准视频直链，PT 服务端会尝试直接下载；若失败请换 .mp4/.webm 直链。", "warn");
-    setProg(10);
+    setProg(8);
 
-    const model = $("model").value;
-    if (!model) throw new Error("没有可用的参考视频模型，请点「检测 Key」刷新");
-    if (isSeedance(model)) {
-      throw new Error("不支持 Seedance 系列（需先签《Asset Library User Agreement》，且素材只收 asset://，不兼容直接吃 URL）。请改用 " + REF_VIDEO_SUGGEST);
+    // 1. 探测原视频时长/尺寸，并抽一帧备用（Kling / MiniMax 需要参考图）
+    log("读取原视频时长与尺寸…");
+    const probe = await loadVideoEl(url);
+    let meta = { duration: probe.duration, width: probe.width, height: probe.height, shortSide: probe.shortSide, ok: probe.ok };
+    let refImage = null;
+    if (probe.ok) {
+      log("原视频：" + meta.duration + "s  " + meta.width + "x" + meta.height
+        + "（短边 " + meta.shortSide + "px）", "ok");
+      log("抽取参考帧…");
+      refImage = await grabFrame(probe.el, Math.min(0.5, meta.duration / 2));
+      if (refImage) log("参考帧已就绪（" + Math.round(refImage.length / 1024) + " KB base64）", "ok");
+      else log("抽帧失败（跨域限制），需要参考图的模型将被跳过", "warn");
+      try { probe.el.removeAttribute("src"); probe.el.load(); } catch {}
+    } else {
+      log("无法读取元数据（" + (probe.reason || "未知") + "），将使用默认参数，时长尺寸无法匹配", "warn");
     }
-    if (!supportsRefVideo(model)) throw new Error("该模型不接受参考视频，请改用 " + REF_VIDEO_SUGGEST);
-    log("模型：" + model, "ok");
-    setProg(18);
+    setProg(15);
 
-    // 提示词
+    // 2. 提示词
     const swapCast = $("swapCast").checked;
     const direction = $("direction").value;
     let core = "";
@@ -400,55 +470,98 @@ async function runFlow() {
         log("AI 润色中…");
         try { core = await polish(key, direction); }
         catch (e) { log("润色失败，用原始描述：" + e.message, "warn"); core = direction.trim(); }
-      } else { core = direction.trim(); }
-      log("创作方向：" + core.slice(0, 200) + (core.length > 200 ? "…" : ""));
+      } else core = direction.trim();
+      log("创作方向：" + core.slice(0, 180) + (core.length > 180 ? "…" : ""));
     } else {
       log("未填方向，使用默认「同构图同节奏 + 原创内容」");
     }
     const prompt = composePrompt(core, swapCast);
     log(swapCast ? "已启用强制换角规则" : "已关闭换角规则（不建议）", swapCast ? "ok" : "warn");
-    setProg(30);
+    setProg(22);
 
-    const opts = { duration: $("duration").value, resolution: $("resolution").value, sound: $("sound").checked };
-    const body = buildBody(model, url, prompt, opts);
+    // 3. 逐个尝试（失败自动降级）
+    const attempts = [];
+    let winner = null;
+    for (let i = 0; i < ADAPTERS.length; i++) {
+      const ad = ADAPTERS[i];
+      if (isSeedance(ad.id)) continue;
+      log("");
+      log("— 尝试模型 " + (i + 1) + "/" + ADAPTERS.length + "：" + ad.label + " —");
 
-    let taskId, resultUrl;
-    if (MOCK) {
-      log("[mock] 请求体：" + JSON.stringify(body).slice(0, 240) + "…");
-      taskId = "mock-" + Date.now();
-      for (const s of [45, 62, 78, 90]) { await sleep(400); log("生成中… " + s + "%"); setProg(s); }
-      resultUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-    } else {
-      log("提交：POST /v1/videos");
-      const data = await ptReq("POST", "/v1/videos", key, body);
-      taskId = data?.id || data?.task_id || data?.data?.id || data?.data?.task_id;
-      if (!taskId) throw new Error("提交未返回 task_id：" + JSON.stringify(data).slice(0, 240));
-      log("task_id=" + taskId, "ok");
-      setProg(40);
-
-      let p = 40;
-      const deadline = Date.now() + 600000;
-      while (Date.now() < deadline) {
-        await sleep(10000);
-        const task = await ptReq("GET", "/v1/videos/" + taskId, key);
-        const st = String(task?.status || "").toLowerCase();
-        if (task?.progress != null) p = 40 + Math.round(Number(task.progress) * 0.55);
-        else p = Math.min(95, p + 3);
-        setProg(p);
-        log("状态：" + (st || "unknown") + (task?.progress != null ? " " + task.progress + "%" : ""));
-        if (st === "succeeded" || st === "completed") { resultUrl = extractUrl(task); break; }
-        if (st === "failed" || st === "cancelled") {
-          throw new Error("生成失败：" + JSON.stringify(task?.error || task?.metadata || task).slice(0, 300));
-        }
+      let built;
+      try {
+        built = ad.fit(meta, prompt, {
+          sourceUrl: url,
+          sound: true,
+          // 需要参考图的模型用抽出的首帧（base64 data URL，官方支持）
+          imageUrl: refImage,
+        });
+      } catch (e) {
+        log("参数不适配，跳过：" + e.message, "warn");
+        attempts.push({ model: ad.id, ok: false, reason: e.message });
+        continue;
       }
-      if (!resultUrl) throw new Error("轮询超时（已等 10 分钟），请到 PT 控制台查看任务 " + taskId);
+
+      const a = built.applied || {};
+      log("参数：" + (a.dur != null ? "时长 " + a.dur + "s  " : "") + "尺寸 " + (a.size || a.mode || "-")
+        + (a.charOrient ? "  朝向 " + a.charOrient : ""));
+      log("端点：POST " + built.path);
+
+      if (MOCK) {
+        for (const s of [40, 58, 74, 88]) { await sleep(350); log("生成中… " + s + "%"); setProg(s); }
+        winner = { model: ad.id,
+          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" };
+        attempts.push({ model: ad.id, ok: true, url: winner.url });
+        break;
+      }
+
+      try {
+        const data = await ptReq("POST", built.path, key, built.body);
+        const taskId = data?.id || data?.task_id || data?.data?.task_id || data?.data?.id;
+        if (!taskId) throw new Error("提交未返回 task_id");
+        log("task_id=" + taskId, "ok");
+        setProg(38);
+
+        const pollPath = built.path.replace("{id}", taskId);
+        let resultUrl = null, p = 38, lastSt = "";
+        const deadline = Date.now() + 600000;
+        while (Date.now() < deadline) {
+          await sleep(10000);
+          const task = await ptReq("GET", pollPath, key);
+          const st = String(task?.status || task?.data?.task_status || "").toLowerCase();
+          lastSt = st;
+          if (task?.progress != null) p = 38 + Math.round(Number(task.progress) * 0.57);
+          else p = Math.min(95, p + 3);
+          setProg(p);
+          log("状态：" + (st || "unknown") + (task?.progress != null ? " " + task.progress + "%" : ""));
+          if (["succeeded", "completed", "succeed"].includes(st)) { resultUrl = extractUrl(task); break; }
+          if (["failed", "cancelled"].includes(st)) {
+            throw new Error("生成失败：" + JSON.stringify(task?.error || task?.data || task).slice(0, 200));
+          }
+        }
+        if (!resultUrl) throw new Error("轮询超时（10 分钟），最后状态=" + lastSt);
+        winner = { model: ad.id, url: resultUrl };
+        attempts.push({ model: ad.id, ok: true, url: resultUrl });
+        break;   // 成功即停止降级
+      } catch (e) {
+        log("失败：" + e.message + " → 降级下一个", "err");
+        attempts.push({ model: ad.id, ok: false, reason: e.message });
+      }
     }
 
+    // 4. 汇总
+    log("");
+    log("=== 结果汇总 ===");
+    for (const t of attempts) log((t.ok ? "✓ " : "✗ ") + t.model + (t.reason ? " — " + t.reason : ""));
+
+    if (!winner) throw new Error("所有模型均未产出结果（纯前端模式下需要参考图的模型会被跳过）");
+
     setProg(100);
-    $("resultVideo").src = resultUrl;
-    $("dlLink").href = resultUrl;
+    $("resultVideo").src = winner.url;
+    $("dlLink").href = winner.url;
     $("resultCard").classList.remove("hidden");
-    log("🎉 重制完成：" + resultUrl, "ok");
+    log("");
+    log("🎉 重制完成｜最终模型：" + winner.model + "｜" + winner.url, "ok");
   } catch (e) {
     log("❌ " + e.message, "err");
     setProg(100);
@@ -467,8 +580,14 @@ $("btnCheck").addEventListener("click", async () => {
   if (MOCK) { $("keyStatus").textContent = "演示模式（不校验）"; return; }
   $("keyStatus").textContent = "检测中…";
   try {
-    await loadModels(key);
-    $("keyStatus").textContent = "Key 有效 ✓";
+    const data = await ptReq("GET", "/v1/models", key);
+    const ids = (data?.data || data?.models || []).map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
+    const hit = ADAPTERS.filter((a) => ids.some((id) => id.toLowerCase() === a.id.toLowerCase()));
+    const seedCount = ids.filter(isSeedance).length;
+    $("keyStatus").textContent = "Key 有效 ✓  可用固定模型 " + hit.length + "/" + ADAPTERS.length
+      + (seedCount ? "（已跳过 " + seedCount + " 个 Seedance）" : "");
+    log("Key 校验通过。账号内命中的固定模型：" + (hit.map((h) => h.label).join("、") || "无"), "ok");
+    if (seedCount) log("已跳过 " + seedCount + " 个 Seedance 系列模型", "warn");
   } catch (e) {
     $("keyStatus").textContent = "检测失败：" + e.message.slice(0, 80);
   }
@@ -477,35 +596,22 @@ $("btnCheck").addEventListener("click", async () => {
 $("url").addEventListener("input", () => {
   const v = $("url").value.trim();
   if (!v) { $("urlHint").textContent = "待填写"; $("urlHint").style.color = "var(--muted)"; return; }
-  const { direct } = resolveSourceUrl(v);
-  $("urlHint").textContent = direct ? "直链 ✓" : "非直链，将尝试服务端下载";
-  $("urlHint").style.color = direct ? "var(--ok)" : "var(--warn)";
+  try {
+    const { direct } = resolveSourceUrl(v);
+    $("urlHint").textContent = direct ? "直链 ✓" : "非直链，将尝试服务端下载";
+    $("urlHint").style.color = direct ? "var(--ok)" : "var(--warn)";
+  } catch (e) {
+    $("urlHint").textContent = "链接格式不对";
+    $("urlHint").style.color = "var(--err)";
+  }
 });
 
 window.addEventListener("DOMContentLoaded", () => {
   const saved = localStorage.getItem("pt_key");
   if (saved) $("key").value = saved;
-
   if (MOCK) {
     $("keyStatus").textContent = "演示模式";
     if (!$("url").value) $("url").value = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
-    const sel = $("model");
-    sel.innerHTML = "";
-    for (const id of FALLBACK_MODELS) {
-      const o = document.createElement("option");
-      o.value = id; o.textContent = id + "  ·  " + modelNote(id) + "（演示）";
-      sel.appendChild(o);
-    }
-    sel.value = "kling-v2-1-master";
-  } else {
-    const sel = $("model");
-    sel.innerHTML = "";
-    for (const id of FALLBACK_MODELS) {
-      const o = document.createElement("option");
-      o.value = id; o.textContent = id + "  ·  " + modelNote(id);
-      sel.appendChild(o);
-    }
-    sel.value = "kling-v2-1-master";
   }
 });
 </script>

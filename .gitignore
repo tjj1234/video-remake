@@ -2,12 +2,25 @@
 .engine_out.txt
 .selftest.txt
 .htmltest.txt
+.adaptertest.txt
 .alltests.txt
 .livecheck.txt
 .mock_probe.txt
 .seed_probe.txt
 .summary.txt
 .*_probe.txt
+# 调试残留
+.gitstate.txt
+.ffbin.txt
+.ffcheck.txt
+.apply.txt
+.at_sum.txt
+.ht_sum.txt
+.probe_frame.jpg
+.probe_test.txt
+.selftest_out.txt
+_*.mjs
+_tail.html
 out/
 __pycache__/
 *.pyc

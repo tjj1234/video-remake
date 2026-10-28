@@ -1,4 +1,4 @@
-// 校验 index.html 的内联 JS 语法 + 关键逻辑存在性
+// 校验 index.html：语法 + 固定模型 + 三适配器 + 无用户可选模型
 import { readFileSync, writeFileSync } from "node:fs";
 import vm from "node:vm";
 
@@ -8,39 +8,55 @@ const out = [];
 let pass = 0, fail = 0;
 const check = (n, c, d) => { if (c) { pass++; out.push("PASS  " + n); } else { fail++; out.push("FAIL  " + n + (d ? " :: " + d : "")); } };
 
-// 抽出最后一个 <script> 块
-const m = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
-check("存在内联 script", m.length > 0);
-const code = m[m.length - 1][1];
+const ms = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+check("存在内联 script", ms.length > 0);
+const code = ms[ms.length - 1][1];
 
-// 语法检查（不执行）
 let syntaxOk = true, errMsg = "";
 try { new vm.Script(code); } catch (e) { syntaxOk = false; errMsg = e.message; }
 check("JS 语法可编译", syntaxOk, errMsg);
 
-// 关键逻辑
-check("统一端点 /v1/videos", code.includes('"/v1/videos"'));
-check("不再有 /kling/v1/videos/motion-control", !code.includes("/kling/v1/videos/motion-control"));
-check("不再有 /minimax/v2/video_generation", !code.includes("/minimax/v2/video_generation"));
-check("不再有 /byteplus/", !code.includes("/byteplus/"));
-check("参考视频 media.reference_video", code.includes('type: "reference_video"'));
-check("CASTING RULE 存在", code.includes("CASTING RULE"));
-check("禁止复现人物", code.includes("MUST NOT reproduce any person"));
-check("换角开关元素", html.includes('id="swapCast"') && html.includes("checked"));
-check("SEEDANCE_RE 黑名单存在", code.includes("SEEDANCE_RE") && code.includes("isSeedance"));
-check("黑名单覆盖 seedance/seedream/dreamina", /seedance\|seedream\|\\bdreamina/.test(code));
-check("supportsRefVideo 拦截 Seedance", /function supportsRefVideo[\s\S]{0,200}isSeedance\(m\)[\s\S]{0,40}return false/.test(code));
-check("loadModels 过滤 Seedance", /loadModels[\s\S]{0,1200}!isSeedance\(id\)/.test(code));
-check("运行前拦截 Seedance 并给替代", code.includes("不支持 Seedance 系列") && code.includes("REF_VIDEO_SUGGEST"));
-check("提示已跳过 Seedance 数量", code.includes("已跳过"));
-check("替代建议不含 seedance", !/REF_VIDEO_SUGGEST\s*=\s*"[^"]*seedance/i.test(code));
-check("wan3 排除", code.includes('startsWith("wan3")'));
-check("seconds 转字符串", code.includes("String(dur)"));
-check("轮询路径 /v1/videos/{id}", code.includes('"/v1/videos/" + taskId'));
-check("Key 存 localStorage", code.includes('localStorage.setItem("pt_key"'));
-check("无外部依赖脚本", !/<script[^>]+src=/.test(html));
-check("无后端 fetch 到非 PT 域", !/fetch\(\s*["'`]https?:\/\/(?!api\.powertokens\.ai)/.test(code));
+// --- 用户不再选模型 ---
+check("页面无模型下拉框", !/id="model"/.test(html));
+check("页面无时长选择", !/id="duration"/.test(html));
+check("页面无分辨率选择", !/id="resolution"/.test(html));
+check("展示固定模型链", html.includes("Wan 2.7 r2v") && html.includes("MiniMax Hailuo 2.3") && html.includes("Kling v3 运镜"));
 
-const report = out.join("\n") + `\n\n通过 ${pass} / 共 ${pass + fail}`;
-writeFileSync(DIR + "\\.htmltest.txt", report, "utf-8");
+// --- 三适配器 ---
+check("ADAPTERS 数组存在", code.includes("const ADAPTERS = ["));
+check("含 wan2.7-r2v", code.includes('"wan2.7-r2v"'));
+check("含 MiniMax-Hailuo-2.3", code.includes('"MiniMax-Hailuo-2.3"'));
+check("含 kling-v3", code.includes('"kling-v3"'));
+check("Wan 用 media.reference_video", code.includes('type: "reference_video"'));
+check("MiniMax 用 image 字段", /image: o\.imageUrl/.test(code));
+check("Kling 用原生运镜端点", code.includes("/kling/v1/videos/motion-control"));
+check("Kling 用 model_name", code.includes("model_name: this.id"));
+check("Kling 用 video_url", code.includes("video_url: o.sourceUrl"));
+check("Kling 用 character_orientation", code.includes("character_orientation: charOrient"));
+
+// --- 自动匹配时长尺寸 ---
+check("有 loadVideoEl 探测", code.includes("loadVideoEl"));
+check("有 grabFrame 抽帧", code.includes("async function grabFrame"));
+check("canvas 转 dataURL", code.includes('toDataURL("image/jpeg"'));
+check("有 guessRatio", code.includes("function guessRatio"));
+check("有 nearestSize", code.includes("function nearestSize"));
+check("短边>=960 -> pro", code.includes('>= 960 ? "pro" : "std"'));
+check("MiniMax 只有 6/10", code.includes('<= 8 ? "6" : "10"'));
+check("MiniMax 10s 强制 768P", code.includes('if (dur === "10") size = "768P"'));
+
+// --- 自动降级 ---
+check("for 循环降级", /for \(let i = 0; i < ADAPTERS\.length; i\+\+\)/.test(code));
+check("失败继续下一个", code.includes("降级下一个"));
+check("有结果汇总", code.includes("=== 结果汇总 ==="));
+
+// --- 换角 + Seedance ---
+check("CASTING RULE", code.includes("CASTING RULE"));
+check("Seedance 黑名单", code.includes("SEEDANCE_RE") && code.includes("isSeedance"));
+check("Seedance 被跳过", code.includes("if (isSeedance(ad.id)) continue"));
+
+// --- 安全 ---
+check("无外部脚本依赖", !/<script[^>]+src=/.test(html));
+check("只调 PT 域名", !/fetch\(\s*["'`]https?:\/\/(?!api\.powertokens\.ai)/.test(code));
+
+writeFileSync(DIR + "\\.htmltest.txt", out.join("\n") + `\n\n通过 ${pass} / 共 ${pass + fail}`, "utf-8");
 process.exitCode = fail ? 1 : 0;

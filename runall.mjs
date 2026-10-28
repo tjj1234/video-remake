@@ -7,6 +7,7 @@ const DIR = "C:\\Users\\admin\\WorkBuddy\\2026-10-27-17-26-05\\video-remake-prot
 const parts = [];
 
 for (const [name, script, outFile] of [
+  ["adapters.mjs 各模型参数适配", "adaptertest.mjs", ".adaptertest.txt"],
   ["engine.mjs 契约与人物规则", "selftest.mjs", ".selftest.txt"],
   ["index.html 语法与逻辑", "htmltest.mjs", ".htmltest.txt"],
 ]) {
