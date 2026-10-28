@@ -29,7 +29,9 @@ const b2 = getAdapter("wan2.7-r2v").fit(srcPortrait, "P", opts());
 check("Wan 竖屏 → ratio 9:16", b2.body.ratio === "9:16", b2.body.ratio);
 
 const b3 = getAdapter("wan2.7-r2v").fit(srcLow, "P", opts());
-check("Wan 360p源 → size 480P", b3.body.size === "480P", b3.body.size);
+// 线上实测：wan2.7-r2v only supports 720P or 1080P —— 没有 480P，低分辨率源要向上取 720P
+check("Wan 360p源 → 取 720P（无 480P 档）", b3.body.size === "720P", b3.body.size);
+check("Wan size 永不出现 480P", !["480P"].includes(b3.body.size));
 
 // 时长受「输入+输出 ≤30」约束
 const longSrc = { duration: 28, width: 1920, height: 1080, shortSide: 1080, fps: 30, hasAudio: true };
@@ -131,6 +133,19 @@ check("guessRatio 无尺寸时给出合法值", WAN_RATIOS.includes(guessRatio(0
   try { getAdapter("kling-v3").fit(srcLandscape, "P", opts({ imageUrl: null })); } catch (e) { e2 = e; }
   check("MiniMax 缺图 → 明确报错", !!e1 && e1.message.includes("image"));
   check("Kling 缺图 → 明确报错", !!e2 && e2.message.includes("image_url"));
+}
+
+// ---------- 回归：Wan size 枚举只能是 720P/1080P（实测无 480P）----------
+{
+  const cases = [0, 240, 360, 480, 540, 720, 768, 900, 1080, 1440, 2160];
+  let bad = "";
+  for (const s of cases) {
+    const sz = getAdapter("wan2.7-r2v").fit(
+      { duration: 5, width: s * 16 / 9, height: s, shortSide: s }, "P", opts()
+    ).body.size;
+    if (!["720P", "1080P"].includes(sz)) bad += `${s}→${sz} `;
+  }
+  check("Wan size 只可能是 720P/1080P", bad === "", bad);
 }
 
 writeFileSync(DIR + "\\.adaptertest.txt", out.join("\n") + `\n\n通过 ${pass} / 共 ${pass + fail}`, "utf-8");

@@ -380,7 +380,8 @@ const ADAPTERS = [
     id: "wan2.7-r2v", label: "Wan 2.7 r2v", endpoint: "/v1/videos", needsImage: false,
     fit(meta, prompt, o) {
       const dur = Math.min(Math.max(2, Math.round(meta.duration || 5)), Math.min(10, Math.max(2, 30 - Math.ceil(meta.duration || 0))));
-      const size = nearestSize(["480P", "720P", "1080P"], meta.shortSide);
+      // ⚠️ 实测：wan2.7-r2v 只接受 720P / 1080P，没有 480P
+      const size = nearestSize(["720P", "1080P"], meta.shortSide);
       return {
         path: this.endpoint,
         body: {
@@ -439,12 +440,42 @@ const ADAPTERS = [
   },
 ];
 
-// ---------- 源链接 ----------
-const DIRECT_EXT = /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i;
+// ---------- 源链接校验 ----------
+// 只接受「能被服务端直接下载成视频文件」的链接。
+// 平台分享页（YouTube / 抖音 / B站 / 快手…）返回的是 HTML 页面，
+// 服务端 ffprobe 会报 "Invalid data found when processing input"。
+const DIRECT_EXT = /\.(mp4|webm|mov|m4v|avi|mkv|flv)(\?|#|$)/i;
+const PAGE_HOSTS = [
+  ["youtube.com", "YouTube"], ["youtu.be", "YouTube"],
+  ["bilibili.com", "B站"], ["b23.tv", "B站"],
+  ["douyin.com", "抖音"], ["iesdouyin.com", "抖音"],
+  ["kuaishou.com", "快手"], ["xiaohongshu.com", "小红书"],
+  ["xhslink.com", "小红书"], ["instagram.com", "Instagram"],
+  ["tiktok.com", "TikTok"], ["twitter.com", "X"], ["x.com", "X"],
+  ["facebook.com", "Facebook"], ["vimeo.com", "Vimeo"],
+  ["weibo.com", "微博"], ["ixigua.com", "西瓜视频"],
+];
+function detectPageHost(raw) {
+  try {
+    const h = new URL(raw).hostname.toLowerCase().replace(/^www\./, "");
+    for (const [dom, name] of PAGE_HOSTS) {
+      if (h === dom || h.endsWith("." + dom)) return name;
+    }
+  } catch {}
+  return null;
+}
 function resolveSourceUrl(raw) {
   const u = String(raw || "").trim();
   if (!u) throw new Error("请填写视频链接");
   if (!/^https?:\/\//i.test(u)) throw new Error("链接必须以 http:// 或 https:// 开头");
+  const page = detectPageHost(u);
+  if (page) {
+    // 平台分享页：服务端下载到的是网页，必然失败 —— 当场拦下，别浪费一次提交
+    throw new Error(
+      `这是${page}的播放页面，不是视频文件直链。服务端只能下载 .mp4/.webm 直链，` +
+      `拿网页去解析会报 "Invalid data found"。请改用视频文件的直接链接。`
+    );
+  }
   return { url: u, direct: DIRECT_EXT.test(u) };
 }
 
@@ -739,10 +770,11 @@ $("url").addEventListener("input", () => {
   if (!v) { $("urlHint").textContent = "待填写"; $("urlHint").style.color = "var(--muted)"; return; }
   try {
     const { direct } = resolveSourceUrl(v);
-    $("urlHint").textContent = direct ? "直链 ✓" : "非直链，将尝试服务端下载";
+    $("urlHint").textContent = direct ? "直链 ✓" : "非 .mp4 直链，服务端会尝试下载";
     $("urlHint").style.color = direct ? "var(--ok)" : "var(--warn)";
   } catch (e) {
-    $("urlHint").textContent = "链接格式不对";
+    // 平台分享页在这里就会给出明确原因，不必等到提交失败
+    $("urlHint").textContent = detectPageHost(v) ? "✗ " + detectPageHost(v) + " 播放页不能直接用" : "链接格式不对";
     $("urlHint").style.color = "var(--err)";
   }
 });

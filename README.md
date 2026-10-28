@@ -30,8 +30,8 @@ Wan 2.7 r2v  ──失败──►  MiniMax Hailuo 2.3  ──失败──►  K
 | 参考视频 | `media:[{type:"reference_video", url}]` | ❌ 不收视频 | **`video_url`** |
 | 必填图片 | ❌ | **`image`（首帧，URL 或 DataURL）** | **`image_url`（人物图）** |
 | 时长 | `seconds` 字符串 2–30（有视频输入时 输入+输出 ≤30） | `seconds` **仅 `"6"` / `"10"`** | ❌ **无此字段**，继承参考视频 |
-| 分辨率 | `size` ∈ `480P`/`720P`/`1080P` | `size` ∈ **`768P`/`1080P`（没有 720P）** | ❌ 只有 `mode` ∈ `std`(720P)/`pro`(1080P) |
-| 画幅 | `ratio` ∈ `adaptive`/`16:9`/`4:3`/`1:1`/`3:4`/`9:16` | ❌ 由 image 决定 | ❌ 由参考视频决定 |
+| 分辨率 | `size` ∈ **`720P`/`1080P`（实测无 480P）** | `size` ∈ **`768P`/`1080P`（没有 720P）** | ❌ 只有 `mode` ∈ `std`(720P)/`pro`(1080P) |
+| 画幅 | `ratio` ∈ `16:9`/`9:16`/`1:1`/`4:3`/`3:4`（**不接受 adaptive**） | ❌ 由 image 决定 | ❌ 由参考视频决定 |
 | 声音 | `generate_audio` bool | ❌ | `keep_original_sound` ∈ `"yes"`/`"no"` |
 | 其他必填 | — | — | **`character_orientation`** ∈ `image`(参考视频≤10s)/`video`(≤30s) |
 | 提示词上限 | — | 2000 字 | 2500 字 |
@@ -90,6 +90,29 @@ If the result would resemble the original person, change the subject instead of 
 
 拦截是三层的：模型链里根本不存在 → 运行时 `isSeedance()` 再跳一次 → 网页端 `SEEDANCE_RE` 过滤 `/v1/models` 列表。
 
+## ⚠️ 源视频必须是「文件直链」
+
+**这是最容易踩的坑。** 本项目把链接交给 PT 服务端去下载，服务端拿到的东西必须**直接是视频文件**。
+
+| 链接类型 | 能用吗 | 原因 |
+|---|---|---|
+| `https://cdn.xxx.com/a.mp4` | ✅ | 服务端直接拿到 mp4 字节流 |
+| `https://www.youtube.com/watch?v=...` | ❌ | 返回的是 HTML 播放页 |
+| 抖音 / B站 / 快手 / 小红书 分享页 | ❌ | 同上，且多数需登录 |
+| 网盘链接 | ❌ | 需鉴权，服务端无法匿名下载 |
+
+用播放页会得到这个报错（来自 Kling 的 ffprobe）：
+```
+failed to probe video_url duration: ffprobe probe error:
+Invalid data found when processing input
+```
+
+**现在页面会在输入时就拦下来**，不会浪费一次提交。你需要自己把视频下载到本地，
+放到任意可公开访问的存储（对象存储 / GitHub Releases / 图床），拿到 `.mp4` 直链再贴进来。
+
+> 想用本地文件？目前**不支持**——浏览器里的文件 PT 服务端访问不到。
+> 必须先把文件传到公网拿到 URL。
+
 ## 工作原理
 
 ```
@@ -147,12 +170,12 @@ ffmpeg 可选：装了就精确探测 + 抽帧；没装则降级为默认 5s/720
 
 ```bash
 node runall.mjs        # 一次跑完全部三套，结果写入 .alltests.txt
-node adaptertest.mjs   # 各模型参数适配，44 项
+node adaptertest.mjs   # 各模型参数适配，52 项
 node selftest.mjs      # 引擎契约 + 人物规则 + 降级链路，28 项
-node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，32 项
+node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，54 项
 ```
 
-当前全部通过：**104 / 104**。
+当前全部通过：**134 / 134**。
 
 ## 法律边界
 

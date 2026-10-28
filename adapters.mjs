@@ -46,10 +46,13 @@ const wanR2V = {
   needsImage: false,          // 不需要参考图
   needsFrameExtract: false,
   strengths: "参考视频直传、参数最省心、成本最低",
-  // 官方约束：size ∈ {480P,720P,1080P}；seconds 2-30（有视频输入时 输入+输出 ≤30）；ratio ∈ adaptive/16:9/4:3/1:1/3:4/9:16
+  // 官方约束（实测）：size 仅 {720P,1080P}——**没有 480P**，传 480P 会 400：
+  //   "wan2.7-r2v only supports 720P or 1080P"
+  // seconds 2-30（有视频输入时 输入+输出 ≤30）
+  // ratio 仅 {16:9, 9:16, 1:1, 4:3, 3:4}——**不接受 adaptive**
   fit(src, prompt, opts = {}) {
     const dur = this.fitDuration(src, opts);
-    const size = nearestSize(["480P", "720P", "1080P"], src.shortSide);
+    const size = nearestSize(["720P", "1080P"], src.shortSide);
     const body = {
       model: this.id,
       prompt,
@@ -85,7 +88,7 @@ const wan30 = {
   fit(src, prompt, opts = {}) {
     const dur = this.fitDuration(src, opts);
     // ⚠️ 官方 size 默认值是 1080P（最高价），必须显式传档位
-    const size = nearestSize(["480P", "720P", "1080P"], src.shortSide);
+    const size = nearestSize(["720P", "1080P"], src.shortSide);
     const body = {
       model: this.id,
       prompt,

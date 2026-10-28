@@ -42,11 +42,36 @@ function buildPrompt(direction, swapCast = true) {
 }
 
 // ---------- 源地址 ----------
-const DIRECT_EXT = /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i;
+const DIRECT_EXT = /\.(mp4|webm|mov|m4v|avi|mkv|flv)(\?|#|$)/i;
+// 平台分享页返回的是 HTML，服务端 ffprobe 会报 "Invalid data found when processing input"
+const PAGE_HOSTS = [
+  ["youtube.com", "YouTube"], ["youtu.be", "YouTube"],
+  ["bilibili.com", "B站"], ["b23.tv", "B站"],
+  ["douyin.com", "抖音"], ["iesdouyin.com", "抖音"],
+  ["kuaishou.com", "快手"], ["xiaohongshu.com", "小红书"],
+  ["xhslink.com", "小红书"], ["instagram.com", "Instagram"],
+  ["tiktok.com", "TikTok"], ["twitter.com", "X"], ["x.com", "X"],
+  ["facebook.com", "Facebook"], ["vimeo.com", "Vimeo"],
+  ["weibo.com", "微博"], ["ixigua.com", "西瓜视频"],
+];
+function detectPageHost(raw) {
+  try {
+    const h = new URL(raw).hostname.toLowerCase().replace(/^www\./, "");
+    for (const [dom, name] of PAGE_HOSTS) if (h === dom || h.endsWith("." + dom)) return name;
+  } catch {}
+  return null;
+}
 function resolveSourceUrl(raw) {
   const u = String(raw || "").trim();
   if (!u) throw new Error("源视频链接为空");
   if (!/^https?:\/\//i.test(u)) throw new Error("链接必须以 http:// 或 https:// 开头");
+  const page = detectPageHost(u);
+  if (page) {
+    throw new Error(
+      `这是${page}的播放页面，不是视频文件直链。服务端只能下载 .mp4/.webm 直链，` +
+      `拿网页去解析会报 "Invalid data found"。请改用视频文件的直接链接。`
+    );
+  }
   return { url: u, direct: DIRECT_EXT.test(u) };
 }
 

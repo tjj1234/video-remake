@@ -70,6 +70,28 @@ check("参考图优先级：上传 > 自动抽帧", code.indexOf("if (userRef &&
 check("缺图时给出可操作提示", code.includes("上传一张原视频的人物/场景截图"));
 check("拖拽有阻止浏览器打开图片", code.includes('window.addEventListener("drop"'));
 
+// --- 回归：平台分享页必须被提前拦下（YouTube 实测会报 Invalid data）---
+{
+  const sandbox = { URL };
+  const hostsSrc = code.match(/const PAGE_HOSTS = \[[\s\S]*?\];/)[0];
+  const fnSrc = code.match(/function detectPageHost\(raw\) \{[\s\S]*?\n\}/)[0];
+  vm.runInNewContext(hostsSrc + "\n" + fnSrc + "\nthis._detect = detectPageHost;", sandbox);
+  const d = sandbox._detect;
+  check("识别 YouTube 播放页", d("https://www.youtube.com/watch?v=GnsiYACM5ng") === "YouTube", String(d("https://www.youtube.com/watch?v=GnsiYACM5ng")));
+  check("识别 youtu.be 短链", d("https://youtu.be/GnsiYACM5ng") === "YouTube");
+  check("识别抖音分享页", d("https://www.douyin.com/video/123") === "抖音");
+  check("识别 B站", d("https://www.bilibili.com/video/BV1xx") === "B站");
+  check("识别 TikTok", d("https://www.tiktok.com/@a/video/1") === "TikTok");
+  check("真实 mp4 直链不被误判", d("https://cdn.example.com/a/b.mp4") === null);
+  check("其他域名的页面不误杀", d("https://example.com/watch?v=1") === null);
+}
+check("有 detectPageHost 函数", code.includes("function detectPageHost"));
+check("有 PAGE_HOSTS 平台表", code.includes("const PAGE_HOSTS"));
+check("resolveSourceUrl 会拦平台页", code.includes("detectPageHost(u)"));
+
+// --- 回归：Wan size 无 480P ---
+check("页面 Wan 适配器不含 480P", !/nearestSize\(\["480P"/.test(code));
+
 // --- 安全 ---
 check("无外部脚本依赖", !/<script[^>]+src=/.test(html));
 check("只调 PT 域名", !/fetch\(\s*["'`]https?:\/\/(?!api\.powertokens\.ai)/.test(code));
