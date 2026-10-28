@@ -26,9 +26,9 @@ Wan 2.7 r2v  ──失败──►  MiniMax Hailuo 2.3  ──失败──►  K
 | | Wan 2.7 r2v | MiniMax Hailuo 2.3 | Kling v3 运镜 |
 |---|---|---|---|
 | 端点 | `POST /v1/videos` | `POST /v1/videos` | `POST /kling/v1/videos/motion-control` |
-| 模型字段 | `model` | `model` | **`model_name`** |
+| 模型字段 | `model` | `model` | **`model_name`**（必须 `kling-v3`） |
 | 参考视频 | `media:[{type:"reference_video", url}]` | ❌ 不收视频 | **`video_url`** |
-| 必填图片 | ❌ | **`image`（首帧，URL 或 DataURL）** | **`image_url`（人物图）** |
+| 必填图片 | ❌ | ❌ **可选**（带图更像原片） | ✅ **`image_url` 必填**（人物主体图） |
 | 时长 | `seconds` 字符串 2–30（有视频输入时 输入+输出 ≤30） | `seconds` **仅 `"6"` / `"10"`** | ❌ **无此字段**，继承参考视频 |
 | 分辨率 | `size` ∈ **`720P`/`1080P`（实测无 480P）** | `size` ∈ **`768P`/`1080P`（没有 720P）** | ❌ 只有 `mode` ∈ `std`(720P)/`pro`(1080P) |
 | 画幅 | `ratio` ∈ `16:9`/`9:16`/`1:1`/`4:3`/`3:4`（**不接受 adaptive**） | ❌ 由 image 决定 | ❌ 由参考视频决定 |
@@ -36,18 +36,50 @@ Wan 2.7 r2v  ──失败──►  MiniMax Hailuo 2.3  ──失败──►  K
 | 其他必填 | — | — | **`character_orientation`** ∈ `image`(参考视频≤10s)/`video`(≤30s) |
 | 提示词上限 | — | 2000 字 | 2500 字 |
 | 返回格式 | 标准 `{id, status}` | 标准 `{id, status}` | **Kling 原生 `{code, message, data:{task_id, task_status}}`** |
+| 实测单价 | 5s 720P ≈ **$0.475** | 6s 768P ≈ **$0.266** | 按源视频时长计 |
 
 所以「换模型」绝不是换个 `model` 字段名那么简单——**换错端点直接 404，换错枚举值直接 400**。
-全部差异封装在 `adapters.mjs` 的 `fit()` 里，由 `adaptertest.mjs` 的 44 条断言守住。
+全部差异封装在 `adapters.mjs` 的 `fit()` 里，由 `adaptertest.mjs` 的 59 条断言守住。
 
 > 早期文档曾说「所有视频模型统一走 `/v1/videos`」——**那是错的**。Kling 运镜必须走厂商原生路径。
+
+### 🔬 实测契约（2026-10-28 逐条验证）
+
+下面每一条都是**真发请求打出来的**，不是从文档抄的。方法是「用错误的值去试，让服务端的报错把真实结构吐出来」。
+
+| 现象 | 服务端原话 | 结论 |
+|---|---|---|
+| Wan 传 `media` + `subject_reference` | `media cannot be used together with subject_reference` | **两者互斥**，只能二选一 |
+| Wan 只传 `media` | 通过（进入扣费判断） | `media[0] = {type:"reference_video", url:"<string>"}` 正确 |
+| Wan `media[].type` 传 `"video"` | `unsupported media.type: video` | 只认 `reference_video` |
+| Wan `size` 传 `480P` | `only supports 720P or 1080P` | 没有 480P 档 |
+| Wan `ratio` 传 `adaptive` | `only supports ratio 16:9, 9:16, 1:1, 4:3, or 3:4` | 不接受 adaptive |
+| MiniMax `size` 传 `720P` | `model_price_error / pricing rule not found` | 只有 768P/1080P |
+| MiniMax `seconds` 传 `5` | `model_price_error / pricing rule not found` | 只有 6/10 |
+| MiniMax 不传 `image` | 通过 | **`image` 不是必填**（早期文档说必填，是错的） |
+| MiniMax `10s` + `1080P` | 400 | 10 秒时强制 768P |
+| Kling 不传 `model_name` | `Model name not specified` | `model_name` 必填 |
+| Kling 传假 `video_url` | `failed to probe video_url duration: ffprobe probe error: Server returned 404` | **鉴权+字段全通过**，只在下载阶段失败 |
+
+> `subject_reference` 是 Wan 的**另一种**输入方式（`[{type:"video", image:["<url>"]}]`），
+> 用于「主体参考」；本项目的目标是把原片当**运动/构图参考**，所以统一走 `media`。
+
+### 关于「参考图」的一个硬约束
+
+PT 服务端只能访问**公网 URL**。本地文件路径它读不到，传过去必定 400。
+所以：
+
+- **网页版**：`canvas.toDataURL()` 得到 `data:image/jpeg;base64,...`，官方接受这种内联图。
+- **CLI 版**：ffmpeg 抽帧到本地后，同样读成 base64 转 data URL 再发（`engine.mjs` 已实现）。
+- 跨域导致 canvas 被污染时，网页版提供**手动上传参考图**的退路。
+
 
 ### 「和原视频一样」能做到什么程度
 
 | 维度 | 效果 |
 |---|---|
 | 时长 | Wan 可精确到秒（2–30）；MiniMax 只能就近取 6 或 10；Kling 完全继承参考视频 |
-| 分辨率和画幅 | 取**最接近原片短边**的合法档位；画幅比例按宽高比推断（容差 14%，超出则 Wan 用 `adaptive`） |
+| 分辨率和画幅 | 取**最接近原片短边**的合法档位；画幅比例按宽高比推断，**永远落在 5 个合法枚举内**（不会出现 adaptive） |
 | 内容 | 同构图、同机位运动、同节奏、同色调，但**人物全部重新选角** |
 
 **老实说：不是逐像素相同。** 模型的枚举值就这么几个（MiniMax 只有两档时长、两档分辨率），
@@ -129,7 +161,7 @@ Invalid data found when processing input
 
 源视频以「参考视频 URL」交给 PT 服务端下载，**浏览器不下载源文件**（绕开跨域限制）。
 只有抽帧这一步需要浏览器真正读取视频——若源站开了 CORS 限制，抽帧会失败，
-此时 Wan 仍可正常工作（它不需要图片），MiniMax / Kling 会被跳过并说明原因。
+此时 Wan 与 MiniMax 仍可正常工作（MiniMax 的 image 是可选的），Kling 会被跳过并说明原因。
 
 ## 本地使用（浏览器）
 
@@ -170,12 +202,33 @@ ffmpeg 可选：装了就精确探测 + 抽帧；没装则降级为默认 5s/720
 
 ```bash
 node runall.mjs        # 一次跑完全部三套，结果写入 .alltests.txt
-node adaptertest.mjs   # 各模型参数适配，52 项
+node adaptertest.mjs   # 各模型参数适配，59 项
 node selftest.mjs      # 引擎契约 + 人物规则 + 降级链路，28 项
-node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，54 项
+node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，55 项
 ```
 
-当前全部通过：**134 / 134**。
+当前全部通过：**142 / 142**。
+
+### 已验证到什么程度（老实交代）
+
+| 验证项 | 状态 |
+|---|---|
+| 三个端点的真实字段/枚举/互斥规则 | ✅ **实打实打真接口验过**（见上表） |
+| 真实 mp4 的 ffprobe 探测（5s/1280x720/30fps/有音轨/h264） | ✅ 通过 |
+| 三模型请求体生成 + 完整降级链 | ✅ 通过（dry-run + mock） |
+| 平台播放页拦截（YouTube 等 17 个域名） | ✅ 通过 |
+| **真实出片（真的拿到 mp4 成片 URL）** | ⏳ **未完成**——账号余额只剩 $0.011，最低一档 MiniMax 也要 $0.266 |
+
+余额不足时服务端会返回：
+```json
+{"code":"pre_consume_token_quota_failed",
+ "message":"token quota is not enough, token remain quota: $0.011000, need quota: $0.266000"}
+```
+
+充值后跑一句即可完成最终验证：
+```bash
+node engine.mjs --url <mp4直链> --key <你的key> --direction "你的创作方向"
+```
 
 ## 法律边界
 
@@ -190,8 +243,8 @@ node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，54 项
 | `adapters.mjs` | **三模型各自适配器**（端点/字段/枚举/约束，核心逻辑） |
 | `probe.mjs` | ffprobe/ffmpeg 探测与抽帧（CLI 用） |
 | `engine.mjs` | Node 孪生引擎（固定链 + 自动降级 + 轮询） |
-| `adaptertest.mjs` | 适配器单测（44 项） |
+| `adaptertest.mjs` | 适配器单测（59 项） |
 | `selftest.mjs` | 引擎自测（28 项） |
-| `htmltest.mjs` | 网页自测（32 项） |
+| `htmltest.mjs` | 网页自测（55 项） |
 | `runall.mjs` | 全量测试入口 |
 | `.nojekyll` | 告诉 GitHub Pages 不要忽略下划线文件 |

@@ -145,7 +145,7 @@
       开启 AI 润色：用 DeepSeek 把你的中文描述扩写成更贴合模型的英文提示词
     </div>
 
-    <label>参考图（MiniMax / Kling 必填 · 不传则自动从源视频抽首帧）</label>
+    <label>参考图（可选 · 用于 Kling 运镜，及提升 MiniMax 的人物相似度）</label>
     <div class="drop" id="drop">
       <div class="ph" id="refPh">🖼️</div>
       <img id="refPreview" class="hidden" alt="参考图预览" />
@@ -187,8 +187,10 @@
     </div>
 
     <div class="cast" style="border-left-color: var(--brand); background: rgba(109,139,255,.07);">
-      ⚙️ 各模型参数差异已内置：Wan 走 <code>/v1/videos</code>（480P/720P/1080P，2–30s）；
-      MiniMax 只有 768P/1080P 且只能 6 或 10 秒；Kling 走原生运镜端点，时长由参考视频决定。
+      ⚙️ 各模型参数差异已内置（全部经真实调用实测）：Wan 2.7 r2v 走 <code>/v1/videos</code>，
+      参考视频用 <code>media:[{type:"reference_video"}]</code> 传入，尺寸只认 720P/1080P、比例只认 16:9/9:16/1:1/4:3/3:4；
+      MiniMax 只有 768P/1080P 且只能 6 或 10 秒（参考图可选）；
+      Kling 走原生运镜端点 <code>/kling/v1/videos/motion-control</code>，参考图必填、时长由参考视频决定。
       页面会自动挑选最接近原片的合法取值，你不需要关心。
     </div>
 
@@ -374,7 +376,8 @@ function nearestSize(candidates, shortSide) {
 }
 
 // ---------- 模型适配器（与 engine.mjs/adapters.mjs 同一套规则）----------
-// Wan 系 → /v1/videos；Kling → 原生运镜端点；MiniMax → /v1/videos（image 必填）
+// 全部约束来自对 api.powertokens.ai 的真实请求实测（2026-10-28）。
+// Wan 系 → /v1/videos；Kling → 原生运镜端点；MiniMax → /v1/videos（image 可选）
 const ADAPTERS = [
   {
     id: "wan2.7-r2v", label: "Wan 2.7 r2v", endpoint: "/v1/videos", needsImage: false,
@@ -386,10 +389,13 @@ const ADAPTERS = [
         path: this.endpoint,
         body: {
           model: this.id, prompt, size,
+          // ⚠️ 实测：ratio 只认 16:9/9:16/1:1/4:3/3:4，传 adaptive 会 400
           ratio: guessRatio(meta.width, meta.height),
           seconds: String(dur),
           generate_audio: o.sound !== false,
           prompt_extend: true, watermark: false,
+          // ⚠️ 实测：reference_video 必须写成 media[].type，且 media 与
+          //    subject_reference 互斥（同时给 → "media cannot be used together with subject_reference"）
           media: [{ type: "reference_video", url: o.sourceUrl }],
         },
         applied: { dur, size },
@@ -397,16 +403,19 @@ const ADAPTERS = [
     },
   },
   {
-    id: "MiniMax-Hailuo-2.3", label: "MiniMax Hailuo 2.3", endpoint: "/v1/videos", needsImage: true,
-    // 只有 768P/1080P；seconds 只有 6 或 10；10s 时 1080P 不可用
+    id: "MiniMax-Hailuo-2.3", label: "MiniMax Hailuo 2.3", endpoint: "/v1/videos", needsImage: false,
+    // 实测：size 只有 768P/1080P（720P → pricing rule not found）；
+    //      seconds 只有 6/10（5 → pricing rule not found），不传则有默认值；
+    //      image **不是必填**（不带也能通过校验），有图时带上更贴近原视频
     fit(meta, prompt, o) {
-      if (!o.imageUrl) throw new Error("需要参考帧（image 必填），但未取到图");
       const dur = (meta.duration || 6) <= 8 ? "6" : "10";
       let size = (meta.shortSide || 0) >= 960 ? "1080P" : "768P";
-      if (dur === "10") size = "768P";
+      if (dur === "10") size = "768P";   // 实测：10s + 1080P → pricing rule not found
+      const body = { model: this.id, prompt: String(prompt).slice(0, 2000), seconds: dur, size };
+      if (o.imageUrl) body.image = o.imageUrl;
       return {
         path: this.endpoint,
-        body: { model: this.id, image: o.imageUrl, prompt: String(prompt).slice(0, 2000), seconds: dur, size },
+        body,
         applied: { dur, size },
       };
     },
@@ -414,8 +423,9 @@ const ADAPTERS = [
   {
     id: "kling-v3", label: "Kling v3 运镜", endpoint: "/kling/v1/videos/motion-control", needsImage: true,
     // 原生端点：model_name + image_url + video_url + character_orientation + mode；无 size/seconds
+    // ⚠️ 实测：model_name 必须是 "kling-v3"；image_url 才是真必填
     fit(meta, prompt, o) {
-      if (!o.imageUrl) throw new Error("需要参考帧（image_url 必填），但未取到图");
+      if (!o.imageUrl) throw new Error("Kling 运镜需要人物主体图（image_url 必填），请上传截图或让浏览器抽帧");
       const mode = (meta.shortSide || 720) >= 960 ? "pro" : "std";
       const orient = orientation(meta.width, meta.height);
       const charOrient = orient === "landscape" ? "video" : "image";
@@ -521,7 +531,7 @@ function extractUrl(task) {
 // ---------- 主流程：固定模型链 + 自动降级 ----------
 // ---------- 参考图上传 ----------
 // 自动抽帧会被源站 CORS 挡住（canvas 污染），所以必须留一条手动上传的退路：
-// MiniMax 的 image / Kling 的 image_url 都是必填，没有图就只能跑 Wan。
+// 实测：Kling 的 image_url 是必填；MiniMax 的 image 可选（但带上更贴近原视频）。
 let userRef = null;   // { dataUrl, width, height, name }
 
 function setRefHint(text, cls) {
@@ -538,7 +548,7 @@ function applyRefImage(ref, name) {
   $("refClear").classList.remove("hidden");
   $("refTitle").textContent = name || "已上传参考图";
   $("refDesc").textContent = ref.width + "x" + ref.height + " · "
-    + Math.round(ref.dataUrl.length / 1024) + " KB · 将作为 MiniMax / Kling 的起始画面";
+    + Math.round(ref.dataUrl.length / 1024) + " KB · 将作为 Kling 的人物主体图 / MiniMax 的起始画面";
   setRefHint("✅ 已就绪。这张图只在你浏览器里转成 base64 后直接发给 PowerTokens，不经过其他服务器。", "ok");
 }
 
@@ -609,8 +619,8 @@ async function runFlow() {
         log("画幅按上传图推断：" + meta.width + "x" + meta.height + " → " + guessRatio(meta.width, meta.height), "ok");
       }
     } else if (!refImage) {
-      log("参考帧缺失：MiniMax / Kling 无法使用，只有 Wan 1 个模型可尝试。", "warn");
-      log("建议：在「参考图」区域上传一张原视频的人物/场景截图，即可启用全部 3 个模型。", "warn");
+      log("参考帧缺失：Kling 运镜需要人物主体图会跳过，Wan / MiniMax 仍可尝试。", "warn");
+      log("建议：在「参考图」区域上传一张原视频的人物截图，即可启用全部 3 个模型。", "warn");
     }
     setProg(15);
 

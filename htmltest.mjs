@@ -28,7 +28,9 @@ check("含 wan2.7-r2v", code.includes('"wan2.7-r2v"'));
 check("含 MiniMax-Hailuo-2.3", code.includes('"MiniMax-Hailuo-2.3"'));
 check("含 kling-v3", code.includes('"kling-v3"'));
 check("Wan 用 media.reference_video", code.includes('type: "reference_video"'));
-check("MiniMax 用 image 字段", /image: o\.imageUrl/.test(code));
+// 实测：MiniMax 的 image 非必填，页面按「有图才带」实现
+check("MiniMax 的 image 按需附带（可选）", /if \(o\.imageUrl\) body\.image = o\.imageUrl/.test(code));
+check("MiniMax 不再强制要求参考图", !/throw new Error\("需要参考帧（image 必填）/.test(code));
 check("Kling 用原生运镜端点", code.includes("/kling/v1/videos/motion-control"));
 check("Kling 用 model_name", code.includes("model_name: this.id"));
 check("Kling 用 video_url", code.includes("video_url: o.sourceUrl"));
@@ -67,7 +69,7 @@ check("有 fileToDataUrl 压缩函数", code.includes("function fileToDataUrl"))
 check("文件体积上限保护（maxSide）", code.includes("1280"));
 check("参考图优先级：上传 > 自动抽帧", code.indexOf("if (userRef && userRef.dataUrl)") > 0
   && code.indexOf("if (userRef && userRef.dataUrl)") < code.indexOf("else if (!refImage)"));
-check("缺图时给出可操作提示", code.includes("上传一张原视频的人物/场景截图"));
+check("缺图时给出可操作提示", code.includes("上传一张原视频的人物截图"));
 check("拖拽有阻止浏览器打开图片", code.includes('window.addEventListener("drop"'));
 
 // --- 回归：平台分享页必须被提前拦下（YouTube 实测会报 Invalid data）---

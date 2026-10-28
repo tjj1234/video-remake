@@ -42,7 +42,7 @@ check("Wan 长源视频时长被压缩", Number(b4.body.seconds) <= 2, b4.body.s
 const mm = getAdapter("MiniMax-Hailuo-2.3");
 const bm = mm.fit(srcLandscape, "P", opts());
 check("MiniMax 端点 /v1/videos", bm.path === "/v1/videos");
-check("MiniMax 有 image 字段", typeof bm.body.image === "string" && bm.body.image.length > 0);
+check("MiniMax 有 image 字段（传入时）", typeof bm.body.image === "string" && bm.body.image.length > 0);
 check("MiniMax 无 media 字段", !("media" in bm.body));
 check("MiniMax seconds 只能是 6 或 10", ["6", "10"].includes(bm.body.seconds), bm.body.seconds);
 check("MiniMax size 只能是 768P/1080P", ["768P", "1080P"].includes(bm.body.size), bm.body.size);
@@ -90,7 +90,7 @@ check("MODEL_CHAIN 无 Seedance", !MODEL_CHAIN.some((a) => /seedance|dreamina|se
 check("MODEL_CHAIN 首选 wan2.7-r2v（无需抽帧）", MODEL_CHAIN[0].id === "wan2.7-r2v");
 check("wan2.7-r2v 不需要抽帧", MODEL_CHAIN[0].needsFrameExtract === false);
 check("Kling 需要抽帧", getAdapter("kling-v3").needsFrameExtract === true);
-check("MiniMax 需要抽帧", getAdapter("MiniMax-Hailuo-2.3").needsFrameExtract === true);
+check("MiniMax 不需要抽帧（实测 image 非必填）", getAdapter("MiniMax-Hailuo-2.3").needsFrameExtract === false);
 
 // ratio 推断
 check("guessRatio 1920x1080 → 16:9", guessRatio(1920, 1080) === "16:9");
@@ -126,13 +126,58 @@ check("guessRatio 极端宽屏 2:1 不回退 adaptive", guessRatio(2000, 1000) !
 check("guessRatio 极端竖屏 1:2 不回退 adaptive", guessRatio(1000, 2000) !== "adaptive");
 check("guessRatio 无尺寸时给出合法值", WAN_RATIOS.includes(guessRatio(0, 0)));
 
-// ---------- 回归：缺图时应明确报错而非静默跳过 ----------
+// ---------- 回归：缺图时的行为（按实测契约修正）----------
+// 实测结论：MiniMax 的 image 并非必填（不带图也能通过服务端校验）；
+//          Kling 的 image_url 是真必填（不带会 400）。
 {
   let e1 = null, e2 = null;
-  try { getAdapter("MiniMax-Hailuo-2.3").fit(srcLandscape, "P", opts({ imageUrl: null })); } catch (e) { e1 = e; }
+  let mmOk = null;
+  try { mmOk = getAdapter("MiniMax-Hailuo-2.3").fit(srcLandscape, "P", opts({ imageUrl: null })); } catch (e) { e1 = e; }
   try { getAdapter("kling-v3").fit(srcLandscape, "P", opts({ imageUrl: null })); } catch (e) { e2 = e; }
-  check("MiniMax 缺图 → 明确报错", !!e1 && e1.message.includes("image"));
-  check("Kling 缺图 → 明确报错", !!e2 && e2.message.includes("image_url"));
+  check("MiniMax 缺图 → 不报错（实测 image 非必填）", !e1 && !!mmOk, e1 ? e1.message : "returned null");
+  check("MiniMax 缺图 → body 里不含 image 键", mmOk && !("image" in mmOk.body), JSON.stringify(mmOk?.body));
+  check("Kling 缺图 → 明确报错", !!e2 && e2.message.includes("image_url"), e2 ? e2.message : "no throw");
+}
+
+// ---------- 回归：wan2.7-r2v 的 media 与 subject_reference 互斥（实测 400）----------
+// 报错原文：media cannot be used together with subject_reference
+{
+  const b = getAdapter("wan2.7-r2v").fit(srcLandscape, "P", opts());
+  check("Wan 请求体不含 subject_reference（与 media 互斥）", !("subject_reference" in b.body));
+  check("Wan media[0].url 是字符串而非数组", typeof b.body.media?.[0]?.url === "string");
+  check("Wan media[0].url 等于源视频直链", b.body.media?.[0]?.url === "https://x/a.mp4");
+}
+
+// ---------- 回归：MiniMax 枚举严格性（实测 720P / 5s 会 pricing rule not found）----------
+{
+  let bad = "", badDur = "";
+  const cases = [0, 240, 360, 480, 720, 768, 900, 1080, 1440, 2160];
+  for (const s of cases) {
+    const r = getAdapter("MiniMax-Hailuo-2.3").fit(
+      { duration: 6, width: s * 16 / 9, height: s, shortSide: s }, "P", opts()
+    );
+    if (!["768P", "1080P"].includes(r.body.size)) bad += `${s}→${r.body.size} `;
+    if (!["6", "10"].includes(r.body.seconds)) badDur += `${s}→${r.body.seconds} `;
+  }
+  check("MiniMax size 只可能是 768P/1080P（无 720P）", bad === "", bad);
+  check("MiniMax seconds 只可能是 6/10", badDur === "", badDur);
+}
+
+// ---------- 回归：所有模型请求体都不能携带会被服务端拒绝的字段组合 ----------
+{
+  const problems = [];
+  const probeSrc = { duration: 5, width: 1920, height: 1080, shortSide: 1080 };
+  for (const ad of MODEL_CHAIN) {
+    let built;
+    try { built = ad.fit(probeSrc, "P", opts()); } catch (e) { problems.push(`${ad.id} 抛错:${e.message}`); continue; }
+    const b = built.body;
+    if ("model" in b && "model_name" in b) problems.push(`${ad.id} 同时有 model 与 model_name`);
+    if (!("model" in b) && !("model_name" in b)) problems.push(`${ad.id} 没有模型名`);
+    if (b.media && b.subject_reference) problems.push(`${ad.id} media 与 subject_reference 共存`);
+    if (b.size === "480P" || b.size === "720P" && ad.id.startsWith("MiniMax")) problems.push(`${ad.id} size 非法:${b.size}`);
+    if (b.ratio === "adaptive") problems.push(`${ad.id} ratio=adaptive`);
+  }
+  check("全部模型请求体无字段冲突", problems.length === 0, problems.join(" | "));
 }
 
 // ---------- 回归：Wan size 枚举只能是 720P/1080P（实测无 480P）----------

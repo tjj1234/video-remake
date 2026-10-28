@@ -12,7 +12,7 @@
 //   node engine.mjs --dry-run --url <链接>              # 只打印各模型将发送的请求体，不扣费
 //   node engine.mjs --url <链接> --key sk-pt-xxx        # 真跑（自动选模型+降级）
 //   node engine.mjs --mock                              # 演示成功路径
-import { writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import { MODEL_CHAIN, getAdapter, PT_BASE } from "./adapters.mjs";
 import { probeVideo, extractFrame, findFfmpeg } from "./probe.mjs";
 
@@ -151,16 +151,27 @@ async function main() {
   log("换角规则：" + (swapCast ? "已启用（强制）" : "已关闭（不建议）"), swapCast ? "ok" : "warn");
 
   // ---------- 3. 抽帧（仅给需要 image 的模型用）----------
+  // ⚠️ 关键约束：PT 服务端只能拿 **公网可访问的 URL**，本地文件路径它读不到。
+  //    所以抽出来的帧必须先转成 data URL（base64），或上传到公网再给 URL。
+  //    CLI 场景没有上传通道，这里用 data URL：PT 实测接受 image/image_url 传 base64。
   let framePath = null;
-  let imageUrl = null;   // 需要公网可访问，dry-run 用占位
-  if (!DRY && !MOCK && findFfmpeg()) {
+  let imageRef = null;   // 发给服务端的参考图引用（data URL 或公网 URL）
+  if (DRY || MOCK) {
+    imageRef = "https://example.com/ref_frame.jpg";   // dry-run 用占位，避免误以为是真图
+  } else if (findFfmpeg()) {
     try {
       framePath = OUT_DIR + "\\.ref_frame.jpg";
       extractFrame(src, framePath, Math.min(0.5, (meta.duration || 1) / 2));
-      log("已抽取参考帧：" + framePath);
+      const buf = readFileSync(framePath);
+      const ext = /\.png$/i.test(framePath) ? "png" : "jpeg";
+      imageRef = `data:image/${ext};base64,${buf.toString("base64")}`;
+      log("已抽取参考帧并转成 data URL（" + Math.round(buf.length / 1024) + " KB）");
     } catch (e) {
-      log("抽帧失败：" + e.message, "warn");
+      log("抽帧失败：" + e.message + "（Kling 将被跳过）", "warn");
+      imageRef = null;
     }
+  } else {
+    log("未找到 ffmpeg，无法抽帧（Kling 将被跳过）", "warn");
   }
 
   // ---------- 4. 逐个模型构造并（可选）提交 ----------
@@ -172,7 +183,7 @@ async function main() {
     try {
       built = adapter.fit(meta, prompt, {
         sourceUrl: src, duration: meta.duration, sound,
-        imageUrl: imageUrl || (DRY ? "https://example.com/ref_frame.jpg" : framePath),
+        imageUrl: imageRef,
       });
     } catch (e) {
       log(`[${adapter.label}] 参数适配失败，跳过：${e.message}`, "warn");

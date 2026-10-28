@@ -30,3 +30,7 @@ out/
 __pycache__/
 *.pyc
 .env
+# 任意临时输出（点开头的 txt/mjs/log）
+.*.txt
+.*.mjs
+.*.log

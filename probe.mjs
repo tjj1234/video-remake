@@ -40,18 +40,40 @@ export function findFfmpeg() {
 }
 
 // 探测远程/本地视频；src 可为 URL 或本地路径
-export function probeVideo(src) {
+//
+// ⚠️ 实测发现的两个坑：
+//   1. 远程 URL 用 ffprobe 直接读会走网络，慢的源站很容易 ETIMEDOUT；
+//      而 ffprobe 超时后整条链路只能降级成默认 5s/720P，时长尺寸就匹配不上了。
+//      所以远程源先「边读边探测」：给足超时（默认 120s），并允许调用方覆盖。
+//   2. 若源站不支持 Range 请求，ffprobe 会拉整个文件到 EOF 才出结果 —— 同样很慢。
+//      这里把 timeout 调大，并且失败时把「可能原因」一并带出去，方便用户判断。
+export function probeVideo(src, opts = {}) {
   const probe = findFfprobe();
   if (!probe) throw new Error("未找到 ffprobe，无法读取源视频时长/尺寸（请先安装 ffmpeg）");
+
+  const isRemote = /^https?:\/\//i.test(String(src));
+  const timeout = opts.timeout || (isRemote ? 120000 : 30000);
+
   let raw;
   try {
     raw = execFileSync(
       probe,
-      ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", src],
-      { encoding: "utf-8", timeout: 90000, maxBuffer: 8 * 1024 * 1024 }
+      [
+        "-v", "error",
+        "-print_format", "json",
+        "-show_format", "-show_streams",
+        // 远程源：允许跟随重定向，并给足分析时间
+        ...(isRemote ? ["-rw_timeout", String(timeout * 1000)] : []),
+        src,
+      ],
+      { encoding: "utf-8", timeout, maxBuffer: 16 * 1024 * 1024 }
     );
   } catch (e) {
-    throw new Error("ffprobe 读取失败：" + (e.stderr?.toString?.().slice(0, 300) || e.message));
+    const detail = (e.stderr?.toString?.() || e.message || "").slice(0, 300);
+    const hint = /ETIMEDOUT|timed out/i.test(detail) || e.code === "ETIMEDOUT"
+      ? `（探测超时 ${Math.round(timeout / 1000)}s：源站太慢或不是视频直链，服务端很可能也下不动）`
+      : "";
+    throw new Error("ffprobe 读取失败：" + detail + hint);
   }
   const j = JSON.parse(raw);
   const v = (j.streams || []).find((s) => s.codec_type === "video");
