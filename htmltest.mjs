@@ -91,6 +91,12 @@ check("有 detectPageHost 函数", code.includes("function detectPageHost"));
 check("有 PAGE_HOSTS 平台表", code.includes("const PAGE_HOSTS"));
 check("resolveSourceUrl 会拦平台页", code.includes("detectPageHost(u)"));
 
+// --- 回归：网页版轮询必须用 pollPath（曾误用 path → 永远轮询不到完成）---
+check("网页版轮询用 built.pollPath（非 built.path）", code.includes("built.pollPath.replace"),
+  "轮询端点必须基于 pollPath（含 {id} 的任务端点）");
+check("网页版轮询未误用 built.path 拼 {id}", !code.includes('built.path.replace("{id}"'),
+  "曾误用 built.path（创建端点），导致轮询列表接口、永远拿不到任务状态");
+
 // --- 回归：Wan size 无 480P ---
 check("页面 Wan 适配器不含 480P", !/nearestSize\(\["480P"/.test(code));
 

@@ -380,7 +380,7 @@ function nearestSize(candidates, shortSide) {
 // Wan 系 → /v1/videos；Kling → 原生运镜端点；MiniMax → /v1/videos（image 可选）
 const ADAPTERS = [
   {
-    id: "wan2.7-r2v", label: "Wan 2.7 r2v", endpoint: "/v1/videos", needsImage: false,
+    id: "wan2.7-r2v", label: "Wan 2.7 r2v", endpoint: "/v1/videos", pollPath: "/v1/videos/{id}", needsImage: false,
     fit(meta, prompt, o) {
       const dur = Math.min(Math.max(2, Math.round(meta.duration || 5)), Math.min(10, Math.max(2, 30 - Math.ceil(meta.duration || 0))));
       // ⚠️ 实测：wan2.7-r2v 只接受 720P / 1080P，没有 480P
@@ -403,7 +403,7 @@ const ADAPTERS = [
     },
   },
   {
-    id: "MiniMax-Hailuo-2.3", label: "MiniMax Hailuo 2.3", endpoint: "/v1/videos", needsImage: false,
+    id: "MiniMax-Hailuo-2.3", label: "MiniMax Hailuo 2.3", endpoint: "/v1/videos", pollPath: "/v1/videos/{id}", needsImage: false,
     // 实测：size 只有 768P/1080P（720P → pricing rule not found）；
     //      seconds 只有 6/10（5 → pricing rule not found），不传则有默认值；
     //      image **不是必填**（不带也能通过校验），有图时带上更贴近原视频
@@ -421,7 +421,7 @@ const ADAPTERS = [
     },
   },
   {
-    id: "kling-v3", label: "Kling v3 运镜", endpoint: "/kling/v1/videos/motion-control", needsImage: true,
+    id: "kling-v3", label: "Kling v3 运镜", endpoint: "/kling/v1/videos/motion-control", pollPath: "/kling/v1/videos/motion-control", needsImage: true,
     // 原生端点：model_name + image_url + video_url + character_orientation + mode；无 size/seconds
     // ⚠️ 实测：model_name 必须是 "kling-v3"；image_url 才是真必填
     fit(meta, prompt, o) {
@@ -685,11 +685,12 @@ async function runFlow() {
         log("task_id=" + taskId, "ok");
         setProg(38);
 
-        const pollPath = built.path.replace("{id}", taskId);
+        // ⚠️ 必须用 pollPath（任务端点 /v1/videos/{id}），绝不能用 path（创建端点 /v1/videos）——否则永远轮询不到完成
+        const pollPath = built.pollPath.replace("{id}", taskId);
         let resultUrl = null, p = 38, lastSt = "";
         const deadline = Date.now() + 600000;
         while (Date.now() < deadline) {
-          await sleep(10000);
+          await sleep(6000);
           const task = await ptReq("GET", pollPath, key);
           const st = String(task?.status || task?.data?.task_status || "").toLowerCase();
           lastSt = st;

@@ -207,7 +207,7 @@ node selftest.mjs      # 引擎契约 + 人物规则 + 降级链路，28 项
 node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，55 项
 ```
 
-当前全部通过：**144 / 144**（adaptertest 59 + selftest 30 + htmltest 55）。
+当前全部通过：**146 / 146**（adaptertest 59 + selftest 30 + htmltest 57）。
 
 ### 已验证到什么程度（老实交代）
 
