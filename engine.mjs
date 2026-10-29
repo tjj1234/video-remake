@@ -228,13 +228,13 @@ async function main() {
       }
       log("task_id=" + taskId, "ok");
 
-      // 轮询
-      const pollBase = built.path.replace("{id}", taskId);
+      // 轮询（⚠️ 必须用 pollPath 含 {id}，绝不能用 path——path 是创建端点，轮询它会永远拿不到任务状态）
+      const pollBase = built.pollPath.replace("{id}", taskId);
       const deadline = Date.now() + 600000;
       let resultUrl = null, lastStatus = "";
       let n = 0;
       while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 10000));
+        await new Promise((r) => setTimeout(r, 6000));
         n++;
         const pr = await fetch(PT_BASE + pollBase, { headers: { Authorization: "Bearer " + key } });
         const pd = await pr.json().catch(() => ({}));

@@ -207,7 +207,7 @@ node selftest.mjs      # 引擎契约 + 人物规则 + 降级链路，28 项
 node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，55 项
 ```
 
-当前全部通过：**142 / 142**。
+当前全部通过：**144 / 144**（adaptertest 59 + selftest 30 + htmltest 55）。
 
 ### 已验证到什么程度（老实交代）
 
@@ -217,18 +217,22 @@ node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，55 项
 | 真实 mp4 的 ffprobe 探测（5s/1280x720/30fps/有音轨/h264） | ✅ 通过 |
 | 三模型请求体生成 + 完整降级链 | ✅ 通过（dry-run + mock） |
 | 平台播放页拦截（YouTube 等 17 个域名） | ✅ 通过 |
-| **真实出片（真的拿到 mp4 成片 URL）** | ⏳ **未完成**——账号余额只剩 $0.011，最低一档 MiniMax 也要 $0.266 |
+| **真实出片（真的拿到 mp4 成片 URL）** | ✅ **已完成**（2026-10-29，用有效 key 真实扣费跑通两条路径） |
 
-余额不足时服务端会返回：
-```json
-{"code":"pre_consume_token_quota_failed",
- "message":"token quota is not enough, token remain quota: $0.011000, need quota: $0.266000"}
-```
+### 真实出片验证记录（2026-10-29）
 
-充值后跑一句即可完成最终验证：
-```bash
-node engine.mjs --url <mp4直链> --key <你的key> --direction "你的创作方向"
-```
+用有效 key 真实扣费，两条路径都跑通、拿到成片 URL：
+
+| 路径 | 模型 | 结果 |
+|---|---|---|
+| 兜底（纯文生，不吃参考视频） | MiniMax-Hailuo-2.3 · 6s 768P | ✅ `task_C3l46miTE1HEAjeBhd2XFz75rySMO7if.mp4` |
+| **核心（参考视频重制）** | Wan 2.7 r2v · 2s 720P · 参考=`fixtures/sample.mp4`（github raw 公链） | ✅ `task_MnlRLMHMZYj8xBij4nzfUaOGQAEfF5ky.mp4` |
+
+成片域名：`pub-425ca9cea13d454a907692a0a9f80079.r2.dev/task-results/...`
+
+实测踩到的两个真实坑（已修）：
+1. **参考视频必须 ≤30s**：W3C 那段 Sintel 预告片 52s，Wan 直接 `duration should be at most 30s`。仓库内置 `fixtures/sample.mp4`（5s）作为可下载参考样例。
+2. **轮询端点 bug**：`engine.mjs` 曾用 `built.path`（创建端点 `/v1/videos`）而非 `built.pollPath`（任务端点 `/v1/videos/{id}`）轮询，导致永远拿不到任务状态、10 分钟后误报失败。已修正，并加回归测试（selftest 第 0 组）。
 
 ## 法律边界
 

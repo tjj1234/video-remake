@@ -21,6 +21,15 @@ function check(name, cond, detail) {
 
 const SRC = "https://example.com/clip.mp4";
 
+// ---------- 0. 回归：轮询必须用 pollPath（曾误用 path → 永远轮询不到完成、10 分钟后误报失败）----------
+{
+  const eng = readFileSync(ENG, "utf-8");
+  check("引擎轮询使用 built.pollPath（非 built.path）", eng.includes("built.pollPath.replace"),
+    "pollBase 必须基于 pollPath（含 {id} 的任务端点）");
+  check("引擎轮询未误用 built.path 拼 {id}", !eng.includes('built.path.replace("{id}"'),
+    "曾误用 built.path（创建端点），导致轮询列表接口、永远拿不到任务状态");
+}
+
 // ---------- 1. 固定模型链，用户不再选模型 ----------
 let o = run(["--dry-run", "--url", SRC, "--no-probe", "--direction", "雨夜街道"]);
 check("声明固定模型策略", o.includes("模型策略：固定"), o.slice(0, 200));
