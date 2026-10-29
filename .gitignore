@@ -17,6 +17,7 @@
 .at_sum.txt
 .ht_sum.txt
 .probe_frame.jpg
+.ref_frame.jpg
 .probe_test.txt
 .selftest_out.txt
 .commitmsg.txt

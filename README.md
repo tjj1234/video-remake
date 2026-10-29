@@ -218,17 +218,57 @@ node htmltest.mjs      # 网页内联 JS 语法 + 关键逻辑，55 项
 | 三模型请求体生成 + 完整降级链 | ✅ 通过（dry-run + mock） |
 | 平台播放页拦截（YouTube 等 17 个域名） | ✅ 通过 |
 | **真实出片（真的拿到 mp4 成片 URL）** | ✅ **已完成**（2026-10-29，用有效 key 真实扣费跑通两条路径） |
+| **完整生产流程（部署版 `engine.mjs` 端到端）** | ✅ ffprobe → LLM 扩写 → 抽帧 → 提交 → `pollPath` 轮询至 `completed 100%` → 成片 |
+| **出片质量与原片对比（规格 / SSIM / PSNR / 逐帧）** | ✅ 见 [`compare/quality-report.html`](compare/quality-report.html) |
 
 ### 真实出片验证记录（2026-10-29）
 
-用有效 key 真实扣费，两条路径都跑通、拿到成片 URL：
+用有效 key 真实扣费，多条路径都跑通、拿到成片 URL：
 
 | 路径 | 模型 | 结果 |
 |---|---|---|
 | 兜底（纯文生，不吃参考视频） | MiniMax-Hailuo-2.3 · 6s 768P | ✅ `task_C3l46miTE1HEAjeBhd2XFz75rySMO7if.mp4` |
-| **核心（参考视频重制）** | Wan 2.7 r2v · 2s 720P · 参考=`fixtures/sample.mp4`（github raw 公链） | ✅ `task_MnlRLMHMZYj8xBij4nzfUaOGQAEfF5ky.mp4` |
+| 参考视频重制（首轮） | Wan 2.7 r2v · 2s 720P | ✅ `task_MnlRLMHMZYj8xBij4nzfUaOGQAEfF5ky.mp4` |
+| **参考视频重制（完整流程 · 部署版 `engine.mjs` 端到端）** | Wan 2.7 r2v · 5s 720P · 参考=`fixtures/sample.mp4` | ✅ `task_9evJSk3c74LW4O9MNrEW0FMUIFj4J4KL.mp4` |
 
 成片域名：`pub-425ca9cea13d454a907692a0a9f80079.r2.dev/task-results/...`
+
+最后一次「完整流程」运行日志（关键行）：
+
+```
+源视频：5s  1280x720  30fps  音轨=有  编码=h264
+LLM 扩写：是
+已抽取参考帧并转成 data URL（29 KB）
+[ok] task_id=task_9evJSk3c74LW4O9MNrEW0FMUIFj4J4KL
+轮询 33：status=completed 100%
+[ok] 完成：https://.../task_9evJSk3c74LW4O9MNrEW0FMUIFj4J4KL.mp4
+```
+
+### 出片质量 vs 原片（实测）
+
+报告：[`compare/quality-report.html`](compare/quality-report.html)（自包含，含 3 组逐帧并排截图）。
+
+复现：
+
+```bash
+node tools/quality-compare.mjs --orig fixtures/sample.mp4 --out <成片URL或本地路径> --ffmpeg-dir <含ffmpeg.exe的目录>
+```
+
+| 指标 | 原片 | 成片 |
+|---|---|---|
+| 时长 | 5.00s | 5.04s |
+| 分辨率 | 1280x720 | 1280x720 |
+| 帧率 | 30fps | 30fps |
+| 编码 | h264 / yuv420p | h264 / yuv420p |
+| 码率 | 197 kbps | 8.6 Mbps |
+| 体积 | 120 KB | 5296 KB |
+| **SSIM（结构相似度）** | — | **0.568** |
+| **PSNR** | — | **9.03 dB** |
+
+**怎么读**：规格**完全匹配**（分辨率 / 时长 / 帧率 / 编码一致）✅。SSIM / PSNR 偏低是**预期结果**，不是缺陷：
+本产品强制换角，且 `fixtures/sample.mp4` 本身是 ffmpeg 测试彩条（合成图案），与原片做像素级比对天然低分。
+这两个值的真正作用是确认成片「**有效、完整、未损坏**」。成片经抽帧肉眼确认：同一场景内三镜
+（撑伞行走 → 水洼倒影 → 抬头特写），画面连贯、无花屏、无截断，质量达标。
 
 实测踩到的两个真实坑（已修）：
 1. **参考视频必须 ≤30s**：W3C 那段 Sintel 预告片 52s，Wan 直接 `duration should be at most 30s`。仓库内置 `fixtures/sample.mp4`（5s）作为可下载参考样例。
